@@ -11,3 +11,7 @@ wheels/
 
 # ipynb
 .ipynb_checkpoints/
+
+# data
+synthetic_data/
+data/
