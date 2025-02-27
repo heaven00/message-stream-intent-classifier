@@ -15,3 +15,5 @@ wheels/
 # data
 synthetic_data/
 data/
+results/
+checkpoints/
