@@ -7,8 +7,6 @@ from text_utils import clean_text
 from datatypes import Message, CalendarClassification
 from dotenv import load_dotenv
 
-# Define cleaning functions
-THRESHOLD = 0.85
 model_path = "model/bert_classifier_v1"
 classifier = pipeline(
     "text-classification", 
@@ -17,9 +15,8 @@ classifier = pipeline(
 )
 
 
-def is_calendar_event(data: Message, threshold: float) -> CalendarClassification:
+def is_calendar_event(data: Message) -> CalendarClassification:
     cleaned_text = clean_text(data.message)
-    # Classify the cleaned message
     return CalendarClassification.model_validate(classifier(cleaned_text)[0])
 
 
@@ -28,7 +25,7 @@ async def listen(url):
         while True:
             message = await websocket.recv(decode=True)
             data = Message.model_validate_json(message)
-            classification = is_calendar_event(data, THRESHOLD)
+            classification = is_calendar_event(data)
             print(data.message, classification)
 
 
