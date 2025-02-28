@@ -5,7 +5,7 @@ import websockets
 from calendar_event_classifier import is_calendar_event
 from datatypes import Message, Conversation
 from dotenv import load_dotenv
-from conversations.ops import mark_old_conversations, upsert_conversations
+from conversations.ops import update_completed_conversation, upsert_conversations
 
 
 async def listen(url):
@@ -19,8 +19,7 @@ async def listen(url):
                 classified_message,
                 lambda x, y: random.choice([True, False]),
             )
-            conversations = mark_old_conversations(conversations)
-
+            conversations = update_completed_conversation(conversations)
 
 
 def main():
