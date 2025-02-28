@@ -1,24 +1,26 @@
 from datatypes import Conversation, ClassifiedMessage
 from typing import Callable
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 
 def add_message_to_conversation(conversation: Conversation, message: ClassifiedMessage):
     conversation.lines.append(message)
     conversation.users.add(message.user)
-    conversation.last_updated = message.ts
+    conversation.last_updated = datetime.now(timezone.utc)
     return conversation
 
 
 def update_completed_conversation(
-    conversations: list[Conversation], seconds_lapsed: int
+    conversations: list[Conversation], seconds_lapsed: int, current_time: datetime
 ) -> list[Conversation]:
     """Discard conversations older than seconds lapsed parameter"""
-    current_time = datetime.now(timezone.utc)
+    updated_conversations = []
     for conv in conversations:
-        if (current_time - conv.last_updated).total_seconds() <= seconds_lapsed:
+        time_diff = (current_time - conv.last_updated)
+        if  time_diff > timedelta(seconds=seconds_lapsed):
             conv.completed = True
-    return conversations
+        updated_conversations.append(conv)
+    return updated_conversations
 
 
 def disentangle_message(
@@ -33,10 +35,15 @@ def disentangle_message(
     matched = False
     for conversation in conversations:
         if classifier(conversation, message):
+            print("matched to existing conversation")
+            print("Conversation:", ', '.join([msg.message for msg in conversation.lines[:-2]]))
             updates.append(add_message_to_conversation(conversation, message))
             matched = True
         else:
             updates.append(conversation)
     if not matched:
-        updates.append(Conversation(lines=[message], last_updated=message.ts))
+        print("did not match to any conversations")
+        updates.append(
+            add_message_to_conversation(Conversation(), message)
+        )
     return updates

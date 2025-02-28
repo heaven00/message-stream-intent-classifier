@@ -56,7 +56,9 @@ def has_matching_keywords(
     message_words = set(re.findall(r"\b\w+\b", message.message.lower()))
     common_keywords = keywords.intersection(message_words)
 
-    return len(common_keywords) / len(message_words)
+    if len(message_words) > 0:
+        return len(common_keywords) / len(message_words)
+    return 0.0
 
 
 # User Interaction Patterns
@@ -125,16 +127,16 @@ def execute_rules(
 
 def rule_based_classifier(conversation: Conversation, message: ClassifiedMessage) -> bool:
     rule_book: list[Rule] = [
-        Rule(name="time_window", function=is_within_time_window, weight=1.0),
-        Rule(name="keyword_matching", function=has_matching_keywords, weight=.5),
+        Rule(name="is_within_time_window", function=is_within_time_window, weight=1.0),
         Rule(name="reply_detection", function=is_reply_to_conversation, weight=1.0),
         Rule(name="user_in_conversation", function=user_is_part_of_conversation, weight=1.0),
-        Rule(name="semantic_similarity", function=semantic_similarity_score, weight=.5),
+        Rule(name="semantic_similarity", function=semantic_similarity_score, weight=1.0),
     ]
     
-    scores = execute_rules(conversation, message, rule_book)    
-    total_score = sum(scores.values())
-    max_possible_score = sum(rule.weight for rule in rule_book)
-    normalized_score = total_score / max_possible_score if max_possible_score else 0.0
-    threshold = 0.5
-    return normalized_score >= threshold
+    scores = execute_rules(conversation, message, rule_book)
+
+    return any([
+        scores['reply_detection'] == 1.0,
+        scores['semantic_similarity'] > 0.8,
+        (scores["user_in_conversation"] + scores['is_within_time_window']) > 1.6
+    ])
