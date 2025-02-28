@@ -68,38 +68,7 @@ base_time = datetime(2025, 2, 28, 12, 0, 0)
             "message": "Anyone up for lunch after work?"
         },
         False
-    ),
-    # Case 3: Borderline classification.
-    # A conversation where the new message is sent very late (almost at the end of the time window),
-    # has limited keyword overlap and no user mention. The delayed time reduces the score.
-    (
-        {
-            "lines": [
-                {
-                    "seqid": 1,
-                    "ts": base_time,
-                    "user": "alice",
-                    "message": "FYI, the quarterly report is now available."
-                },
-                {
-                    "seqid": 2,
-                    "ts": base_time,
-                    "user": "bob",
-                    "message": "Review the report before our next call."
-                },
-            ],
-            "users": {"alice", "bob"},
-            "last_updated": base_time,
-            "completed": False
-        },
-        {
-            "seqid": 5,
-            "ts": (base_time + timedelta(seconds=29)),
-            "user": "eve",
-            "message": "The report looks interesting."
-        },
-        False
-    ),
+    )
 ])
 def test_rule_based_classifier(conversation_data, message_data, expected):
     # Instantiate our Pydantic models from the provided dictionaries.

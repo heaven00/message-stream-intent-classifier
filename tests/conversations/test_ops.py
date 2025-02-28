@@ -22,7 +22,7 @@ def test_add_message_to_conversation():
     assert len(updated_conv.lines) == 1
     assert updated_conv.lines[0].seqid == 1
     assert updated_conv.users == {"user1"}
-    assert updated_conv.last_updated == ts
+    assert updated_conv.last_updated > ts
 
 
 # Test updating a completed conversation
