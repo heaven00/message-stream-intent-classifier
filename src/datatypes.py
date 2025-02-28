@@ -1,12 +1,6 @@
 from pydantic import BaseModel
 from typing import Literal
-
-
-class Message(BaseModel):
-    seqid: int
-    ts: float
-    user: str
-    message: str
+from datetime import datetime
 
 
 class CalendarClassification(BaseModel):
@@ -14,5 +8,23 @@ class CalendarClassification(BaseModel):
     score: float
 
 
+class Message(BaseModel):
+    seqid: int
+    ts: datetime
+    user: str
+    message: str
+
+
+class ClassifiedMessage(Message):
+    classification: CalendarClassification
+
+
 class DetectedCalendarEvent(BaseModel):
     lines: list[Message]
+
+
+class Conversation(BaseModel):
+    lines: list[Message] = []
+    users: list[str] = []
+    last_updated: datetime
+    completed: bool = False

@@ -1,32 +1,26 @@
 import asyncio
 import os
+import random
 import websockets
-from transformers import pipeline
-from transformers import BertTokenizer
-from text_utils import clean_text
-from datatypes import Message, CalendarClassification
+from calendar_event_classifier import is_calendar_event
+from datatypes import Message, Conversation
 from dotenv import load_dotenv
-
-model_path = "model/bert_classifier_v1"
-classifier = pipeline(
-    "text-classification", 
-    model=model_path, 
-    tokenizer=BertTokenizer.from_pretrained('bert-base-uncased')
-)
-
-
-def is_calendar_event(data: Message) -> CalendarClassification:
-    cleaned_text = clean_text(data.message)
-    return CalendarClassification.model_validate(classifier(cleaned_text)[0])
+from conversations.ops import mark_old_conversations, upsert_conversations
 
 
 async def listen(url):
+    conversations: list[Conversation] = []
     async with websockets.connect(url) as websocket:
         while True:
-            message = await websocket.recv(decode=True)
-            data = Message.model_validate_json(message)
-            classification = is_calendar_event(data)
-            print(data.message, classification)
+            message = Message.model_validate_json(await websocket.recv(decode=True))
+            classified_message = is_calendar_event(message)
+            conversations = upsert_conversations(
+                conversations,
+                classified_message,
+                lambda x, y: random.choice([True, False]),
+            )
+            conversations = mark_old_conversations(conversations)
+
 
 
 def main():
