@@ -23,8 +23,13 @@ async def listen(url):
             while True:
                 message = Message.model_validate_json(await websocket.recv(decode=True))
                 classified_message = is_calendar_event(message)
-                if (classified_message.classification.label == 'LABEL_1' and classified_message.classification.score > 0.8):
-                    # check if it matches any of the older conversations 
+                
+                confident_it_is_a_calendar_event = (
+                    classified_message.classification.label == 'LABEL_1' 
+                    and 
+                    classified_message.classification.score > 0.8
+                )
+                if confident_it_is_a_calendar_event:
                     state.calender_conversations = disentangle_message(
                         state.calender_conversations,
                         classified_message,
@@ -57,3 +62,7 @@ async def store_probable_calendar_conversations(conv: Conversation):
 def main():
     load_dotenv()
     asyncio.run(listen(os.getenv("WS_SOCK")))
+
+
+if __name__ == "__main__":
+    main()
