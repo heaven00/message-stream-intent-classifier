@@ -25,6 +25,6 @@ class DetectedCalendarEvent(BaseModel):
 
 class Conversation(BaseModel):
     lines: list[Message] = []
-    users: list[str] = []
-    last_updated: datetime
+    users: set[str] = set()
+    last_updated: datetime | None = None
     completed: bool = False

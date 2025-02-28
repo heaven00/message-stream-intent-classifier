@@ -5,7 +5,8 @@ import websockets
 from calendar_event_classifier import is_calendar_event
 from datatypes import Message, Conversation
 from dotenv import load_dotenv
-from conversations.ops import update_completed_conversation, upsert_conversations
+from conversations.ops import update_completed_conversation, disentangle_message
+from conversations.disentanglement_classifier import rule_based_classifier
 
 
 async def listen(url):
@@ -14,12 +15,12 @@ async def listen(url):
         while True:
             message = Message.model_validate_json(await websocket.recv(decode=True))
             classified_message = is_calendar_event(message)
-            conversations = upsert_conversations(
+            conversations = disentangle_message(
                 conversations,
                 classified_message,
-                lambda x, y: random.choice([True, False]),
+                rule_based_classifier,
             )
-            conversations = update_completed_conversation(conversations)
+            conversations = update_completed_conversation(conversations, 45)
 
 
 def main():
