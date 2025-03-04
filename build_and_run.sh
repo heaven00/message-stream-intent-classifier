@@ -5,13 +5,13 @@ mkdir -p model results
 # bert classifier folder if its not present
 mkdir -p model/bert_classifier_v1
 
-S3_BASE_URL="https://message-stream-classifier.s3.ca-central-1.amazonaws.com/model/bert-classifier-v1/"
+S3_BASE_URL="https://message-stream-classifier.s3.ca-central-1.amazonaws.com/model/bert-classifier-v1"
 
 # if the required files are not present download them
 for file in "config.json" "model.safetensors" "training_args.bin"; do
     local_path="model/bert_classifier_v1/$file"
     s3_url="${S3_BASE_URL}/$file"
-    
+    echo "${S3_BASE_URL}/$file"    
     if [ ! -f "$local_path" ]; then
         echo "Downloading $file from S3..."
         wget -q -O "$local_path" "$s3_url"

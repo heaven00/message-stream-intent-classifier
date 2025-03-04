@@ -17,6 +17,7 @@ synthetic_data/
 data/
 results/
 checkpoints/
+model/
 
 # env
 .env
