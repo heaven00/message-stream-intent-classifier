@@ -130,7 +130,7 @@ def rule_based_classifier(conversation: Conversation, message: ClassifiedMessage
         Rule(name="is_within_time_window", function=is_within_time_window, weight=1.0),
         Rule(name="reply_detection", function=is_reply_to_conversation, weight=1.0),
         Rule(name="user_in_conversation", function=user_is_part_of_conversation, weight=1.0),
-        Rule(name="semantic_similarity", function=semantic_similarity_score, weight=1.0),
+        Rule(name="semantic_similarity", function=semantic_similarity_score, weight=.7),
     ]
     
     scores = execute_rules(conversation, message, rule_book)
