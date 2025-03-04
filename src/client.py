@@ -18,6 +18,7 @@ class AppState(BaseModel):
 
 async def listen(url):
     state = AppState()
+    print(f"starting listening on {url}")
     try:
         async with websockets.connect(url) as websocket:
             while True:
@@ -35,10 +36,10 @@ async def listen(url):
                         classified_message,
                         rule_based_classifier
                     )
-                    print(f"got new message: {classified_message.message}, confidence: {classified_message.classification.score}")
+                    print(f"New Probable Calendar event message: {classified_message.message}, confidence: {classified_message.classification.score}")
                 state.calender_conversations = update_completed_conversation(
                     conversations=state.calender_conversations, 
-                    seconds_lapsed=30,
+                    seconds_lapsed=5,
                     current_time=datetime.now(timezone.utc)
                 )
                 for conv in state.calender_conversations:
@@ -47,6 +48,10 @@ async def listen(url):
                         state.calender_conversations.remove(conv)
     except ConnectionClosedOK:
         print("Completed Processing the messages in the websocket")
+        print("write out any pending conversation")
+        for conv in state.calender_conversations:
+            await store_probable_calendar_conversations(conv)
+
     except ConnectionClosedError as e:
         print(f"Connection closed from source, {e}")
     except InvalidURI:
