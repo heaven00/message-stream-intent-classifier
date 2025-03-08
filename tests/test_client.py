@@ -2,7 +2,7 @@ from unittest.mock import patch
 import json
 import os
 from client import AppState, process_message
-from datatypes import Conversation
+from datatypes import Conversation, Message
 from scenario import Scenario
 
 
@@ -23,10 +23,14 @@ def test_process_message():
     
     for scenario in scenarios:
         state = AppState(calender_conversations=scenario.initial_state)
-        message = scenario.new_message
+        classfied_message = scenario.new_message
+        message = Message(
+            **classfied_message.model_dump(exclude="classification")
+        )
         
-        
-        updated_state = process_message(state, message)
+        with patch("calendar_event_classifier.is_calendar_event") as mock_is_cal:
+            mock_is_cal.return_value = classfied_message
+            updated_state = process_message(state, message)
         
         _compare_conversations(updated_state.calender_conversations, scenario.expected_state, ["last_updated"])
 

@@ -4,7 +4,8 @@
         "message": "great idea! when are you available next week?",
         "ts": 1741459420,
         "seqid": 1,
-        "user": "anon" 
+        "user": "anon",
+        "classification": {"label": "LABEL_1", "score": 0.9}
     },
     "expected_state": [
         {
@@ -13,7 +14,7 @@
                     "message": "great idea! when are you available next week?",
                     "classification": {
                         "label": "LABEL_1",
-                        "score": 0.9333478212356567
+                        "score": 0.9
                     },
                     "ts": 1741459420,
                     "seqid": 1,
