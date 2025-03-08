@@ -16,36 +16,61 @@ class AppState(BaseModel):
     calender_conversations: list[Conversation] = []
 
 
+async def store_probable_calendar_conversations(conv: Conversation):
+    async with aiof.open(f"results/event_{conv.lines[0].seqid}_v1.json", "w") as out:
+        await out.write(conv.model_dump_json())
+        await out.flush()
+
+
+def process_message(state: AppState, message: Message) -> AppState:
+    classified_message = is_calendar_event(message)
+    print(classified_message)
+    # Check if the message is confidently classified as a calendar event
+    confident_it_is_a_calendar_event = (
+        classified_message.classification.label == "LABEL_1"
+        and classified_message.classification.score > 0.8
+    )
+    if confident_it_is_a_calendar_event:
+        # Disentangle the message and update the state
+        state.calender_conversations = disentangle_message(
+            state.calender_conversations, classified_message, rule_based_classifier
+        )
+        print(
+            f"got new message: {classified_message.message}, confidence: {classified_message.classification.score}"
+        )
+    return state
+
+
+# Function to handle completed conversations
+def handle_completed_conversations(state: AppState):
+    # Update conversations to mark them as completed if inactive for 30 seconds
+    state.calender_conversations = update_completed_conversation(
+        conversations=state.calender_conversations,
+        seconds_lapsed=30,
+        current_time=datetime.now(timezone.utc),
+    )
+
+    return state
+
+
+# Function to listen to messages from a WebSocket server
 async def listen(url):
     state = AppState()
-    print(f"starting listening on {url}")
     try:
+        # Connect to the WebSocket server
         async with websockets.connect(url) as websocket:
             while True:
+                # Receive and validate a message from the WebSocket
                 message = Message.model_validate_json(await websocket.recv(decode=True))
-                classified_message = is_calendar_event(message)
-                
-                confident_it_is_a_calendar_event = (
-                    classified_message.classification.label == 'LABEL_1' 
-                    and 
-                    classified_message.classification.score > 0.8
-                )
-                if confident_it_is_a_calendar_event:
-                    state.calender_conversations = disentangle_message(
-                        state.calender_conversations,
-                        classified_message,
-                        rule_based_classifier
-                    )
-                    print(f"New Probable Calendar event message: {classified_message.message}, confidence: {classified_message.classification.score}")
-                state.calender_conversations = update_completed_conversation(
-                    conversations=state.calender_conversations, 
-                    seconds_lapsed=5,
-                    current_time=datetime.now(timezone.utc)
-                )
+
+                state = process_message(state, message)
+                state = handle_completed_conversations(state)
+
                 for conv in state.calender_conversations:
                     if conv.completed:
                         await store_probable_calendar_conversations(conv)
                         state.calender_conversations.remove(conv)
+
     except ConnectionClosedOK:
         print("Completed Processing the messages in the websocket")
         print("write out any pending conversation")
@@ -58,12 +83,7 @@ async def listen(url):
         print(f"{url} invalid websocket URI")
 
 
-async def store_probable_calendar_conversations(conv: Conversation):
-    async with aiof.open(f"results/event_{conv.lines[0].seqid}_v1.json", "w") as out:
-        await out.write(conv.model_dump_json())
-        await out.flush()
-
-
+# Main function to load environment variables and start listening
 def main():
     load_dotenv()
     asyncio.run(listen(os.getenv("WS_SOCK")))
