@@ -10,7 +10,9 @@ from conversations.disentanglement_classifier import rule_based_classifier
 from datatypes import Message, Conversation
 from dotenv import load_dotenv
 import aiofiles as aiof
+import logging
 
+logger = logging.getLogger(__name__)
 
 class AppState(BaseModel):
     calender_conversations: list[Conversation] = []
@@ -24,26 +26,28 @@ async def store_probable_calendar_conversations(conv: Conversation):
 
 def process_message(state: AppState, message: Message) -> AppState:
     classified_message = is_calendar_event(message)
-    print(classified_message)
-    # Check if the message is confidently classified as a calendar event
+    logger.debug(f"Classified message: {classified_message}")
+    
     confident_it_is_a_calendar_event = (
         classified_message.classification.label == "LABEL_1"
         and classified_message.classification.score > 0.8
     )
+    
     if confident_it_is_a_calendar_event:
-        # Disentangle the message and update the state
         state.calender_conversations = disentangle_message(
-            state.calender_conversations, classified_message, rule_based_classifier
+            state.calender_conversations, 
+            classified_message, 
+            rule_based_classifier
         )
-        print(
-            f"got new message: {classified_message.message}, confidence: {classified_message.classification.score}"
+        
+        logger.info(
+            f"Received new message: '{classified_message.message}'"
+            f" with confidence {classified_message.classification.score}"
         )
     return state
 
 
-# Function to handle completed conversations
 def handle_completed_conversations(state: AppState):
-    # Update conversations to mark them as completed if inactive for 30 seconds
     state.calender_conversations = update_completed_conversation(
         conversations=state.calender_conversations,
         seconds_lapsed=30,
@@ -53,39 +57,46 @@ def handle_completed_conversations(state: AppState):
     return state
 
 
-# Function to listen to messages from a WebSocket server
 async def listen(url):
     state = AppState()
+    
     try:
-        # Connect to the WebSocket server
         async with websockets.connect(url) as websocket:
             while True:
-                # Receive and validate a message from the WebSocket
-                message = Message.model_validate_json(await websocket.recv(decode=True))
-
+                message = Message.model_validate_json(
+                    await websocket.recv(decode=True)
+                )
+                
                 state = process_message(state, message)
                 state = handle_completed_conversations(state)
-
-                for conv in state.calender_conversations:
+                logger.debug(f"Updated State: {state}")
+                for conv in list(state.calender_conversations):
                     if conv.completed:
                         await store_probable_calendar_conversations(conv)
+                        logger.debug(f"Stored conversation: {conv.lines[0].message}")
                         state.calender_conversations.remove(conv)
-
+    
     except ConnectionClosedOK:
-        print("Completed Processing the messages in the websocket")
-        print("write out any pending conversation")
+        logger.info("Completed processing messages in WebSocket")
+        logger.debug("Writing out any pending conversations")
+        
         for conv in state.calender_conversations:
             await store_probable_calendar_conversations(conv)
 
     except ConnectionClosedError as e:
-        print(f"Connection closed from source, {e}")
+        logger.error(f"Connection closed unexpectedly: {e}", exc_info=True)
+    
     except InvalidURI:
-        print(f"{url} invalid websocket URI")
+        logger.error(f"Invalid WebSocket URI: {url}")
 
 
-# Main function to load environment variables and start listening
 def main():
     load_dotenv()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
     asyncio.run(listen(os.getenv("WS_SOCK")))
 
 
