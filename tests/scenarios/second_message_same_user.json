@@ -1,0 +1,49 @@
+{
+    "initial_state": [
+        {
+            "lines": [
+                {
+                    "message": "great idea! when are you available next week?",
+                    "classification": {"label": "LABEL_1", "score": 0.9},
+                    "ts": 1741459420,
+                    "seqid": 1,
+                    "user": "anon"
+                }
+            ],
+            "users": ["anon"],
+            "completed": false,
+            "last_updated": 1741459420 
+        }
+    ],
+    "new_message": {
+        "message": "I am available in most mornings",
+        "ts": 1741459480,
+        "seqid": 2,
+        "user": "anon",
+        "classification": {"label": "LABEL_1", "score": 0.85}
+    },
+    "expected_state": [
+        {
+            "lines": [
+                {
+                    "message": "great idea! when are you available next week?",
+                    "ts": 1741459420,
+                    "seqid": 1,
+                    "user": "anon",
+                    "classification": {"label": "LABEL_1", "score": 0.9}
+                },
+                {
+                    "message": "I am available in most mornings",
+                    "ts": 1741459480,
+                    "seqid": 2,
+                    "user": "anon",
+                    "classification": {"label": "LABEL_1", "score": 0.85}
+                }
+            ],
+            "users": ["anon"],
+            "completed": false,
+            "last_updated": 1741459480 
+
+        }
+    ]
+}

@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import patch
 import json
 import os
@@ -6,36 +7,52 @@ from datatypes import Conversation, Message
 from scenario import Scenario
 
 
-def _load_scenarios(scenario_dir):
+def load_scenarios(scenario_dir: str) -> list[tuple[str, Scenario]]:
     scenarios = []
     for filename in os.listdir(scenario_dir):
         if filename.endswith('.json'):
             with open(os.path.join(scenario_dir, filename), 'r') as file:
-                scenario_data = json.load(file)
-                scenario = Scenario(**scenario_data)
-                scenarios.append(scenario)
+                data = json.load(file)
+                scenario = Scenario(**data)
+                scenarios.append((filename, scenario))
     return scenarios
 
 
-def test_process_message():
-    scenario_dir = 'tests/scenarios'
-    scenarios: list[Scenario] = _load_scenarios(scenario_dir)
+@pytest.mark.parametrize("scenario_name, scenario", load_scenarios('tests/scenarios'))
+def test_process_message(scenario_name: str, scenario: Scenario):
+    state = AppState(calender_conversations=scenario.initial_state)
     
-    for scenario in scenarios:
-        state = AppState(calender_conversations=scenario.initial_state)
-        classfied_message = scenario.new_message
-        message = Message(
-            **classfied_message.model_dump(exclude="classification")
+    # Extract message details
+    classified_message = scenario.new_message
+    message_data = classified_message.model_dump(exclude="classification")
+    message = Message(**message_data)
+    
+    with patch("calendar_event_classifier.is_calendar_event") as mock_is_cal:
+        mock_is_cal.return_value = classified_message    
+        updated_state = process_message(state, message)
+        
+    # Enhanced comparison with scenario context
+    try:
+        _compare_conversations(
+            updated_state.calender_conversations,
+            scenario.expected_state,
+            ["last_updated"],
+            scenario_name  # Pass scenario name for error messages
         )
+    except AssertionError as e:
+        pytest.fail(f"Scenario '{scenario_name}' failed: {str(e)}")
+
+
+def _compare_conversations(convs, expected, excluded, scenario_name):
+    assert len(convs) == len(expected), (
+        f"{scenario_name}: Expected {len(expected)} conversations but got {len(convs)}"
+    )
+    
+    for conv, exp in zip(convs, expected):
+        actual = conv.model_dump(exclude=excluded)
+        expected_data = exp.model_dump(exclude=excluded)
         
-        with patch("calendar_event_classifier.is_calendar_event") as mock_is_cal:
-            mock_is_cal.return_value = classfied_message
-            updated_state = process_message(state, message)
-        
-        _compare_conversations(updated_state.calender_conversations, scenario.expected_state, ["last_updated"])
-
-
-
-def _compare_conversations(conversations: list[Conversation], expected_conversations: list[Conversation], excluded: list[str]):
-    for conversation, expected_conversation  in zip(conversations, expected_conversations):
-        assert conversation.model_dump(exclude=excluded) == expected_conversation.model_dump(exclude=excluded)
+        assert actual == expected_data, (
+            f"{scenario_name}: Mismatch\n"
+            f"Actual: {actual}\nExpected: {expected_data}"
+        )
