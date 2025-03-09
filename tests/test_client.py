@@ -3,7 +3,7 @@ from unittest.mock import patch
 import json
 import os
 from client import AppState, process_message
-from datatypes import Conversation, Message
+from datatypes import Message
 from scenario import Scenario
 
 
@@ -27,17 +27,17 @@ def test_process_message(scenario_name: str, scenario: Scenario):
     message_data = classified_message.model_dump(exclude="classification")
     message = Message(**message_data)
     
-    with patch("calendar_event_classifier.is_calendar_event") as mock_is_cal:
-        mock_is_cal.return_value = classified_message    
+    with patch("client.is_calendar_event") as mock_is_cal:
+        mock_is_cal.return_value = classified_message 
         updated_state = process_message(state, message)
         
     # Enhanced comparison with scenario context
     try:
         _compare_conversations(
-            updated_state.calender_conversations,
-            scenario.expected_state,
-            ["last_updated"],
-            scenario_name  # Pass scenario name for error messages
+            convs=updated_state.calender_conversations,
+            expected=scenario.expected_state,
+            excluded=["last_updated"],
+            scenario_name=scenario_name
         )
     except AssertionError as e:
         pytest.fail(f"Scenario '{scenario_name}' failed: {str(e)}")
@@ -56,3 +56,4 @@ def _compare_conversations(convs, expected, excluded, scenario_name):
             f"{scenario_name}: Mismatch\n"
             f"Actual: {actual}\nExpected: {expected_data}"
         )
+ 
