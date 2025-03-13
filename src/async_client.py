@@ -18,25 +18,28 @@ class AppState(BaseModel):
     conversations: list[Conversation] = []
 
 
-
-async def store_probable_calendar_conversations(conversational_archival_queue: asyncio.Queue):
+async def store_probable_calendar_conversations(
+    conversational_archival_queue: asyncio.Queue,
+):
     conv = await conversational_archival_queue.get()
     async with aiof.open(f"results/event_{conv.lines[0].seqid}_v1.json", "w") as out:
         await out.write(conv.model_dump_json())
         await out.flush()
 
 
-async def classify_message(valid_message_queue: asyncio.Queue, classified_message_queue: asyncio.Queue):
+async def classify_message(
+    valid_message_queue: asyncio.Queue, classified_message_queue: asyncio.Queue
+):
     while True:
         message = await valid_message_queue.get()
         classified_message = is_calendar_event(message)
         await classified_message_queue.put(classified_message)
 
- 
+
 async def match_conversation(classified_message_queue: asyncio.Queue, state: AppState):
     # update the conversation state
     classified_message = await classified_message_queue.get()
-    
+
     confident_it_is_a_calendar_event = (
         classified_message.classification.label == "LABEL_1"
         and classified_message.classification.score > 0.8
@@ -53,23 +56,27 @@ async def match_conversation(classified_message_queue: asyncio.Queue, state: App
         )
 
 
-async def completed_conversations(conversation_archival_queue: asyncio.Queue, state: AppState):
+async def completed_conversations(
+    conversation_archival_queue: asyncio.Queue, state: AppState
+):
     for conv in state.conversations:
         if conv.completed:
             await conversation_archival_queue.put(conv)
 
 
-async def flush_all_conversations(conversation_archival_queue: asyncio.Queue, state: AppState):
+async def flush_all_conversations(
+    conversation_archival_queue: asyncio.Queue, state: AppState
+):
     for conv in state.conversations:
         await conversation_archival_queue.put(conv)
 
 
 async def listen(url, valid_message_queue: asyncio.Queue):
     try:
-        async with websockets.connect(url) as websocket:
-            while True:
-                message = Message.model_validate_json(await websocket.recv(decode=True))
-                await valid_message_queue.put(message)
+        websocket = await websockets.connect(url)
+        async with websocket:
+            message = Message.model_validate_json(await websocket.recv(decode=True))
+            await valid_message_queue.put(message)
 
     except ConnectionClosedOK:
         logger.info("Completed processing messages in WebSocket")
@@ -102,12 +109,12 @@ def main():
         classify_message(valid_message_queue, classified_message_queue),
         match_conversation(classified_message_queue, state),
         completed_conversations(conversation_archival_queue, state),
-        store_probable_calendar_conversations(conversation_archival_queue)
+        store_probable_calendar_conversations(conversation_archival_queue),
     )
 
     asyncio.gather(
         flush_all_conversations(conversation_archival_queue, state),
-        store_probable_calendar_conversations(conversation_archival_queue)   
+        store_probable_calendar_conversations(conversation_archival_queue),
     )
 
 
