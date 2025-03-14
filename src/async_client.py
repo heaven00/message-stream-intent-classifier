@@ -46,8 +46,8 @@ async def match_conversation(classified_message_queue: asyncio.Queue, state: App
     )
 
     if confident_it_is_a_calendar_event:
-        state.calender_conversations = disentangle_message(
-            state.calender_conversations, classified_message, rule_based_classifier
+        state.conversations = disentangle_message(
+            state.conversations, classified_message, rule_based_classifier
         )
 
         logger.info(
