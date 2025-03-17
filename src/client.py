@@ -6,7 +6,7 @@ import websockets
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError, InvalidURI
 from calendar_event_classifier import is_calendar_event
 from conversations.ops import disentangle_message, update_completed_conversation
-from conversations.disentanglement_classifier import rule_based_classifier
+from conversations.disentanglement_rule_based_classifier import rule_based_classifier
 from datatypes import Message, Conversation
 from dotenv import load_dotenv
 import aiofiles as aiof
