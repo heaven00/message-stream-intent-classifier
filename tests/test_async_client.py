@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, patch, MagicMock
 import pytest
 from websockets import ConnectionClosedOK
 from async_client import (
@@ -9,7 +9,6 @@ from async_client import (
     flush_all_conversations,
     listen,
     match_conversation,
-    store_probable_calendar_conversations,
     store_probable_calendar_conversations,
 )
 from datatypes import CalendarClassification, ClassifiedMessage, Conversation, Message
@@ -23,10 +22,11 @@ async def test_listen_sends_valid_message_to_provided_queue():
     mock_ws.recv.return_value = json_message
 
     valid_queue = asyncio.Queue()
+    messages_received_mock = MagicMock()
     mock_connection = AsyncMock(return_value=mock_ws)
 
     with patch("websockets.connect", side_effect=mock_connection):
-        task = asyncio.create_task(listen(url, valid_queue))
+        task = asyncio.create_task(listen(url, valid_queue, messages_received_mock))
 
         await asyncio.sleep(0.1)
         assert mock_connection.called
@@ -39,6 +39,10 @@ async def test_listen_sends_valid_message_to_provided_queue():
             rcvd={"code": 1000, "reason": "OK"}, sent=None
         )
         await task
+        await asyncio.sleep(0.1)
+        task.cancel()
+
+    messages_received_mock.update.assert_called_once_with(1)
 
 
 @pytest.mark.asyncio
@@ -58,7 +62,8 @@ async def test_classify_message_queue_normal_flow():
         await valid_queue.put(test_message)
         await asyncio.sleep(0.1)
 
-        task = asyncio.create_task(classify_message(valid_queue, classified_queue))
+        processed_metric = MagicMock()
+        task = asyncio.create_task(classify_message(valid_queue, classified_queue, processed_metric))
 
         await asyncio.sleep(0.1)
 
@@ -68,12 +73,49 @@ async def test_classify_message_queue_normal_flow():
         assert classified_queue.qsize() == 1
         assert classified_queue.get_nowait() == classified_test_message
 
+    processed_metric.update.assert_called_once_with(1)
+
+
+@pytest.mark.asyncio
+async def test_match_conversation_updates_active_conversations():
+    state = AppState()
+    active_mock = MagicMock()
+
+    classified_queue = asyncio.Queue()  
+    classified_test_message = ClassifiedMessage(
+        seqid=1,
+        ts=1741874411,
+        user="user1",
+        message="sharing google meet link",
+        classification=CalendarClassification(label="LABEL_1", score=0.9),
+    )
+
+    await classified_queue.put(classified_test_message)
+    
+    # Start the task
+    task = asyncio.create_task(match_conversation(
+        classified_queue, state, active_mock))
+    
+    # Wait briefly for processing (or use a condition to wait until queue is empty)
+    await asyncio.sleep(0.1)  # Adjust timeout as needed
+    
+    # Cancel the task to prevent infinite loop
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert len(state.conversations) == 1
+    assert active_mock.n == 1
+
 
 @pytest.mark.asyncio
 async def test_match_conversation_queue_normal_flow_with_confident_message():
     state = AppState()
+    active_mock = MagicMock()  # Add this line
 
-    classified_queue = asyncio.Queue()
+    classified_queue = asyncio.Queue()  
     classified_test_message = ClassifiedMessage(
         seqid=1,
         ts=1741874411,
@@ -86,7 +128,8 @@ async def test_match_conversation_queue_normal_flow_with_confident_message():
         await classified_queue.put(classified_test_message)
         await asyncio.sleep(0.1)
 
-        task = asyncio.create_task(match_conversation(classified_queue, state))
+        task = asyncio.create_task(match_conversation(
+            classified_queue, state, active_mock))  # Add active_mock here
         await task
         await asyncio.sleep(0.1)
 
@@ -99,8 +142,9 @@ async def test_match_conversation_queue_normal_flow_with_confident_message():
 @pytest.mark.asyncio
 async def test_match_conversation_queue_normal_flow_with_non_confident_message():
     state = AppState()
+    active_mock = MagicMock()  # Add this line
 
-    classified_queue = asyncio.Queue()
+    classified_queue = asyncio.Queue()  
     classified_test_message = ClassifiedMessage(
         seqid=1,
         ts=1741874411,
@@ -113,7 +157,8 @@ async def test_match_conversation_queue_normal_flow_with_non_confident_message()
         await classified_queue.put(classified_test_message)
         await asyncio.sleep(0.1)
 
-        task = asyncio.create_task(match_conversation(classified_queue, state))
+        task = asyncio.create_task(match_conversation(
+            classified_queue, state, active_mock))  # Add active_mock here
         await task
         await asyncio.sleep(0.1)
 
