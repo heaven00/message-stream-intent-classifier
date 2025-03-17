@@ -1,4 +1,5 @@
 import asyncio
+from datetime import datetime, timezone
 import os
 from pydantic import BaseModel
 import websockets
@@ -67,38 +68,29 @@ async def match_conversation(
         active_conversations_metric.refresh()  
 
 
-async def completed_conversations(
+async def archive_completed_conversations(
     conversation_archival_queue: asyncio.Queue, state: AppState
 ):
-    for conv in state.conversations:
+    updated_conversations = update_completed_conversation(
+            conversations=state.conversations,
+            seconds_lapsed=20,
+            current_time=datetime.now(timezone.utc),
+        )
+    for conv in updated_conversations:
         if conv.completed:
             await conversation_archival_queue.put(conv)
 
-
-async def flush_all_conversations(
-    conversation_archival_queue: asyncio.Queue, state: AppState
-):
-    for conv in state.conversations:
-        await conversation_archival_queue.put(conv)
+    state.conversations = [conv for conv in updated_conversations if not conv.completed]
+    asyncio.sleep(10)
 
 
 async def listen(url, valid_message_queue: asyncio.Queue, messages_received):
-    try:
-        async with websockets.connect(url) as websocket:
-            while True:
-                message_data = await websocket.recv()
-                message = Message.model_validate_json(message_data)
-                await valid_message_queue.put(message)
-                messages_received.update(1)  # Increment on each received message
-    except ConnectionClosedOK:
-        logger.info("Completed processing messages in WebSocket")
-        logger.debug("Writing out any pending conversations")
-
-    except ConnectionClosedError as e:
-        logger.error(f"Connection closed unexpectedly: {e}", exc_info=True)
-
-    except InvalidURI:
-        logger.error(f"Invalid WebSocket URI: {url}")
+    async with websockets.connect(url) as websocket:
+        while True:
+            message_data = await websocket.recv()
+            message = Message.model_validate_json(message_data)
+            await valid_message_queue.put(message)
+            messages_received.update(1)  # Increment on each received message
 
 
 async def main():
@@ -136,14 +128,39 @@ async def main():
     classified_message_queue = asyncio.Queue()
     conversation_archival_queue = asyncio.Queue()
 
-    await asyncio.gather(
+    tasks = [
         listen(os.getenv("WS_SOCK"), valid_message_queue, metrics['messages_received']),
         classify_message(valid_message_queue, classified_message_queue, metrics['processed_messages']),
         match_conversation(classified_message_queue, state, metrics['active_conversations']),
-        completed_conversations(conversation_archival_queue, state),
-        store_probable_calendar_conversations(conversation_archival_queue),
-        flush_all_conversations(conversation_archival_queue, state),
-    )
+        archive_completed_conversations(conversation_archival_queue, state),
+        store_probable_calendar_conversations(conversation_archival_queue)
+    ]
+    try:
+        await asyncio.gather(*tasks, return_exceptions=True)
+    except (KeyboardInterrupt, ConnectionClosedOK) as e:
+        logging.info("Initiating graceful shutdown...")
+        current_tasks = asyncio.all_tasks()
+        for task in current_tasks:
+            if task != asyncio.current_task():
+                task.cancel()
+
+        # Wait for tasks to complete/cancel
+        await asyncio.gather(*current_tasks, return_exceptions=True)
+        logging.info("All tasks completed/cancelled")
+        # Clean up queues
+        for queue in [
+            valid_message_queue,
+            classified_message_queue,
+            conversation_archival_queue
+        ]:
+            queue.put_nowait(None)  # Signal completion
+        logging.info("All Queues cleared")
+        
+        # Clean up tqdm metrics
+        for progress_bar in metrics.values():
+            progress_bar.close()
+        logging.info("Graceful shutdown completed.")        
+
 
 
 def run():

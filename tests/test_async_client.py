@@ -5,7 +5,7 @@ from websockets import ConnectionClosedOK
 from async_client import (
     AppState,
     classify_message,
-    completed_conversations,
+    archive_completed_conversations,
     flush_all_conversations,
     listen,
     match_conversation,
@@ -189,7 +189,7 @@ async def test_completed_conversation_archives_completed_converstaions():
     state = AppState(conversations=[completed_conversation])
 
     archival_queue = asyncio.Queue()
-    task = asyncio.create_task(completed_conversations(archival_queue, state))
+    task = asyncio.create_task(archive_completed_conversations(archival_queue, state))
     await task
     await asyncio.sleep(0.1)
 
