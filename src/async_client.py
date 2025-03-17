@@ -89,7 +89,7 @@ async def listen(url, valid_message_queue: asyncio.Queue):
         logger.error(f"Invalid WebSocket URI: {url}")
 
 
-def main():
+async def main():
     load_dotenv()
     logging.basicConfig(
         level=logging.INFO,
@@ -104,19 +104,19 @@ def main():
     classified_message_queue = asyncio.Queue()
     conversation_archival_queue = asyncio.Queue()
 
-    asyncio.gather(
+    await asyncio.gather(
         listen(os.getenv("WS_SOCK"), valid_message_queue),
         classify_message(valid_message_queue, classified_message_queue),
         match_conversation(classified_message_queue, state),
         completed_conversations(conversation_archival_queue, state),
         store_probable_calendar_conversations(conversation_archival_queue),
+        flush_all_conversations(conversation_archival_queue, state),
     )
 
-    asyncio.gather(
-        flush_all_conversations(conversation_archival_queue, state),
-        store_probable_calendar_conversations(conversation_archival_queue),
-    )
+
+def run():
+    asyncio.run(main())
 
 
 if __name__ == "__main__":
-    main()
+    run()
