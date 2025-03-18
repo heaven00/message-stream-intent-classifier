@@ -1,0 +1,56 @@
+{
+    "initial_state": [
+        {
+            "lines": [
+                {
+                    "message": "great idea! when are you available next week?",
+                    "classification": {"label": "LABEL_1", "score": 0.9},
+                    "ts": 1741459420,
+                    "seqid": 1,
+                    "user": "anon"
+                }
+            ],
+            "users": ["anon"],
+            "completed": false,
+            "last_updated": 1741459420
+        }
+    ],
+    "new_message": {
+        "message": "Reminder: Let's finalize plans!",
+        "ts": 1741460020,
+        "seqid": 4,
+        "user": "anon",
+        "classification": {"label": "LABEL_1", "score": 0.9}
+    },
+    "expected_state": [
+        {
+            "lines": [
+                {
+                    "message": "great idea! when are you available next week?",
+                    "ts": 1741459420,
+                    "seqid": 1,
+                    "user": "anon",
+                    "classification": {"label": "LABEL_1", "score": 0.9}
+                }
+            ],
+            "users": ["anon"],
+            "completed": false,
+            "last_updated": 1741459420
+        },
+        {
+            "lines": [
+                {
+                    "message": "Reminder: Let's finalize plans!",
+                    "ts": 1741460020,
+                    "seqid": 4,
+                    "user": "anon",
+                    "classification": {"label": "LABEL_1", "score": 0.9}
+                }
+            ],
+            "users": ["anon"],
+            "completed": false,
+            "last_updated": 1741460020
+
+        }
+    ]
+}

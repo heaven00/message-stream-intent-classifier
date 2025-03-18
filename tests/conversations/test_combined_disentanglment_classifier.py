@@ -1,4 +1,4 @@
-from conversations.disentanglement_classifier import rule_based_classifier
+from conversations.disentanglement_rule_based_classifier import rule_based_classifier
 import pytest
 from datetime import datetime, timedelta
 from datatypes import Conversation, Message

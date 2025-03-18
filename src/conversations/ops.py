@@ -1,3 +1,6 @@
+import logging
+logger = logging.getLogger(__name__)
+
 from datatypes import Conversation, ClassifiedMessage
 from typing import Callable
 from datetime import datetime, timedelta, timezone
@@ -13,7 +16,6 @@ def add_message_to_conversation(conversation: Conversation, message: ClassifiedM
 def update_completed_conversation(
     conversations: list[Conversation], seconds_lapsed: int, current_time: datetime
 ) -> list[Conversation]:
-    """Discard conversations older than seconds lapsed parameter"""
     updated_conversations = []
     for conv in conversations:
         time_diff = (current_time - conv.last_updated)
@@ -28,22 +30,19 @@ def disentangle_message(
     message: ClassifiedMessage,
     classifier: Callable[[Conversation, ClassifiedMessage], bool],
 ) -> list[Conversation]:
-    """Compare with all the existing conversations to see if the message is
-    part of the existing one or
-    """
     updates = []
     matched = False
     for conversation in conversations:
         if classifier(conversation, message):
-            print("matched to existing conversation")
-            print("Conversation:", ', '.join([msg.message for msg in conversation.lines[:-2]]))
+            logger.debug(f"Matched to existing conversation. Current lines: {', '.join([msg.message for msg in conversation.lines[:-2]])}")
             updates.append(add_message_to_conversation(conversation, message))
             matched = True
         else:
             updates.append(conversation)
     if not matched:
-        print("did not match to any conversations")
+        logger.debug(f"No match found for message: '{message.message}'")
+        new_conv = Conversation()
         updates.append(
-            add_message_to_conversation(Conversation(), message)
+            add_message_to_conversation(new_conv, message)
         )
     return updates

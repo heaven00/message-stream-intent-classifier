@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from conversations.disentanglement_classifier import has_matching_keywords, is_reply_to_conversation, is_within_time_window
+from conversations.disentanglement_rule_based_classifier import has_matching_keywords, is_reply_to_conversation, is_within_time_window
 from datatypes import Conversation, Message
 import pytest
 
