@@ -108,6 +108,5 @@ def classify_message(previous_messages: list[ClassifiedMessage], msg: Classified
 
 
 def llm_based_classifier(conversation: Conversation, message: ClassifiedMessage) -> bool:
-    classification = classify_message(conversation.lines, message, 'deepseek-r1:8b')
-    logging.info(classification)
+    classification = classify_message(conversation.lines, message, 'qwq:32b')
     return classification.matches
