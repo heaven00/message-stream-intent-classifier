@@ -42,7 +42,7 @@ async def classify_message(
 
 
 async def match_conversation(
-    classified_message_queue: asyncio.Queue, state: AppState,
+    classified_message_queue: asyncio.Queue, state_update_queue: asyncio.Queue,
     active_conversations_metric
 ):
     while True:
@@ -54,34 +54,46 @@ async def match_conversation(
         )
 
         if confident_it_is_a_calendar_event:
-            state.conversations = disentangle_message(
-                state.conversations, classified_message, rule_based_classifier
-            )
+            # Emit the message to the state update queue instead of modifying state directly
+            await state_update_queue.put(classified_message)
 
-            logger.info(
-                f"Received new message: '{classified_message.message}'"
-                f" with confidence {classified_message.classification.score}"
-            )
-        
         current_active = len(state.conversations)
         active_conversations_metric.n = current_active  # Set exact count
         active_conversations_metric.refresh()  
 
 
+async def state_manager(state: AppState, state_update_queue: asyncio.Queue):
+    while True:
+        message = await state_update_queue.get()
+        try:
+            # Use existing disentanglement logic to update state
+            state.conversations = disentangle_message(
+                state.conversations,
+                message,
+                rule_based_classifier
+            )
+            state_update_queue.task_done()
+        except Exception as e:
+            logger.error(f"State update failed: {e}")
+            state_update_queue.task_done()
+
+
 async def archive_completed_conversations(
     conversation_archival_queue: asyncio.Queue, state: AppState
 ):
-    updated_conversations = update_completed_conversation(
-            conversations=state.conversations,
+    while True:
+        await asyncio.sleep(20)
+        updated_convs = update_completed_conversation(
+            state.conversations,
             seconds_lapsed=20,
             current_time=datetime.now(timezone.utc),
         )
-    for conv in updated_conversations:
-        if conv.completed:
-            await conversation_archival_queue.put(conv)
+        for conv in updated_convs:
+            if conv.completed:
+                await conversation_archival_queue.put(conv)
 
-    state.conversations = [conv for conv in updated_conversations if not conv.completed]
-    asyncio.sleep(10)
+        state.conversations = [conv for conv in updated_convs if not conv.completed]
+        asyncio.sleep(10)
 
 
 async def listen(url, valid_message_queue: asyncio.Queue, messages_received):
@@ -127,13 +139,15 @@ async def main():
     valid_message_queue = asyncio.Queue()
     classified_message_queue = asyncio.Queue()
     conversation_archival_queue = asyncio.Queue()
+    state_update_queue = asyncio.Queue()  # Added
 
     tasks = [
         listen(os.getenv("WS_SOCK"), valid_message_queue, metrics['messages_received']),
         classify_message(valid_message_queue, classified_message_queue, metrics['processed_messages']),
-        match_conversation(classified_message_queue, state, metrics['active_conversations']),
+        match_conversation(classified_message_queue, state_update_queue, metrics['active_conversations']),  # Updated
         archive_completed_conversations(conversation_archival_queue, state),
-        store_probable_calendar_conversations(conversation_archival_queue)
+        store_probable_calendar_conversations(conversation_archival_queue),
+        state_manager(state, state_update_queue)  # Added
     ]
     try:
         await asyncio.gather(*tasks, return_exceptions=True)
@@ -151,7 +165,8 @@ async def main():
         for queue in [
             valid_message_queue,
             classified_message_queue,
-            conversation_archival_queue
+            conversation_archival_queue,
+            state_update_queue  # Added
         ]:
             queue.put_nowait(None)  # Signal completion
         logging.info("All Queues cleared")
