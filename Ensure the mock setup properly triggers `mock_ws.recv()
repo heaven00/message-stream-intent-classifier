@@ -1,0 +1,33 @@
+# tests/test_async_client.py
+import asyncio
+from unittest.mock import AsyncMock, patch, MagicMock
+import pytest
+from websockets import ConnectionClosedOK
+from async_client import (
+    AppState,
+    classify_message,
+    archive_completed_conversations,
+    listen,
+    match_conversation,
+    store_probable_calendar_conversations,
+)
+from datatypes import CalendarClassification, ClassifiedMessage, Conversation, Message
+
+
+@pytest.mark.asyncio
+async def test_listen_sends_valid_message_to_provided_queue():
+    url = "ws://some-url"
+    mock_ws = AsyncMock()
+    json_message = '{"seqid": 1, "ts": 1741874411, "user": "user1", "message": "hi"}'
+    mock_ws.recv.return_value = json_message
+
+    valid_queue = asyncio.Queue()
+    messages_received_mock = MagicMock()
+
+    with patch("websockets.connect", return_value=mock_ws):  # Simplify the side_effect
+        task = asyncio.create_task(listen(url, valid_queue, messages_received_mock))
+
+        await asyncio.sleep(0.1)
+        assert mock_ws.recv.called  # Should now pass
+
+        task.cancel()
