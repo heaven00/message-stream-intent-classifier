@@ -42,7 +42,9 @@ async def classify_message(
 
 
 async def match_conversation(
-    classified_message_queue: asyncio.Queue, state_update_queue: asyncio.Queue,
+    state: AppState,  # Added state as a parameter
+    classified_message_queue: asyncio.Queue, 
+    state_update_queue: asyncio.Queue,
     active_conversations_metric
 ):
     while True:
@@ -144,7 +146,7 @@ async def main():
     tasks = [
         listen(os.getenv("WS_SOCK"), valid_message_queue, metrics['messages_received']),
         classify_message(valid_message_queue, classified_message_queue, metrics['processed_messages']),
-        match_conversation(classified_message_queue, state_update_queue, metrics['active_conversations']),  # Updated
+        match_conversation(state, classified_message_queue, state_update_queue, metrics['active_conversations']),  # Updated
         archive_completed_conversations(conversation_archival_queue, state),
         store_probable_calendar_conversations(conversation_archival_queue),
         state_manager(state, state_update_queue)  # Added
