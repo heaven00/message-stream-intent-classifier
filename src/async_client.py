@@ -38,7 +38,7 @@ async def classify_message(
     while True:
         message = await valid_message_queue.get()
         classified_message = is_calendar_event(message)
-        await classified_message_queue.put(classified_message)
+        asyncio.create_task(classified_message_queue.put(classified_message))
         processed_messages_metric.update(1)  # Increment after processing
 
 
