@@ -23,10 +23,10 @@ def __format_msg(msg: ClassifiedMessage):
     }
 
 
-def classify_message(previous_messages: list[ClassifiedMessage], msg: ClassifiedMessage, model: str) -> Response:
+def classify_message(previous_messages: list[Message], msg: ClassifiedMessage, model: str) -> Response:
     examples = """
-    Example where matches is True 
-    
+    Example where matches is True
+
     #1
     Conversation:
     user: blah, message: Hi, I need help with my ollama setup
@@ -77,14 +77,14 @@ def classify_message(previous_messages: list[ClassifiedMessage], msg: Classified
     """
 
     prompt = f"""
-        You are provided with a conversation with user and the message they wrote in an IRC or slack channel and a new message, you need to classify whether the 
+        You are provided with a conversation with user and the message they wrote in an IRC or slack channel and a new message, you need to classify whether the
         new message is part of the conversation or not, reply True if the new message is part of the conversation or reply False if the new message is not part of the
         conversation, provide reason for your choice.
 
         example:
         {examples}
 
-        Here is the Conversation so far: 
+        Here is the Conversation so far:
         {[__format_msg(msg) for msg in previous_messages]}
 
         the new message:
@@ -104,10 +104,9 @@ def classify_message(previous_messages: list[ClassifiedMessage], msg: Classified
             'num_ctx': 8192
         }
     )
-    return Response.model_validate_json(response.message.content)
+    return Response.model_validate_json(response.message.content or "")
 
 
 def llm_based_classifier(conversation: Conversation, message: ClassifiedMessage) -> bool:
-    classification = classify_message(conversation.lines, message, 'deepseek-r1:8b')
-    logging.info(classification)
+    classification = classify_message(conversation.lines, message, 'qwq:32b')
     return classification.matches
