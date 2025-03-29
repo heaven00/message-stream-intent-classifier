@@ -83,9 +83,8 @@ async def test_start_ingestion_should_process_invalid_message_and_pass_to_queue(
     # I don't know at the moment why this does not work
     # assert counter.assert_called_once()
 
-@pytest.mark.skip(reason="starts an infinite running event loop when running all tests")
 @pytest.mark.asyncio
-async def test_classify_message_queue_normal_flow():
+async def test_classify_message_processes_single_message():
     valid_queue = asyncio.Queue()
     classified_queue = asyncio.Queue()
     test_message = Message(seqid=1, ts=1741874411, user="user1", message="hi")
@@ -101,11 +100,14 @@ async def test_classify_message_queue_normal_flow():
         processed_metric = MagicMock()
         await valid_queue.put(test_message)
 
-        await classify_message(valid_queue, classified_queue, processed_metric)
+        task = asyncio.create_task(classify_message(valid_queue, classified_queue, processed_metric))
 
+        await asyncio.sleep(.1)
         assert valid_queue.qsize() == 0
         assert classified_queue.qsize() == 1
         assert classified_queue.get_nowait() == classified_test_message
+
+        task.cancel()
 
     processed_metric.update.assert_called_once_with(1)
 
