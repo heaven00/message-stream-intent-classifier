@@ -1,9 +1,10 @@
 import asyncio
 from datetime import datetime, timezone
 import os
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 import websockets
-from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError, InvalidURI
+from functools import partial
+from websockets.exceptions import ConnectionClosedOK
 from calendar_event_classifier import is_calendar_event
 from conversations.ops import disentangle_message, update_completed_conversation
 from conversations.disentanglement_rule_based_classifier import rule_based_classifier
@@ -37,13 +38,13 @@ async def classify_message(
     while True:
         message = await valid_message_queue.get()
         classified_message = is_calendar_event(message)
-        await classified_message_queue.put(classified_message)
+        asyncio.create_task(classified_message_queue.put(classified_message))
         processed_messages_metric.update(1)  # Increment after processing
 
 
 async def match_conversation(
-    classified_message_queue: asyncio.Queue, state: AppState,
-    active_conversations_metric
+    classified_message_queue: asyncio.Queue,
+    state_update_queue: asyncio.Queue
 ):
     while True:
         classified_message = await classified_message_queue.get()
@@ -54,43 +55,57 @@ async def match_conversation(
         )
 
         if confident_it_is_a_calendar_event:
-            state.conversations = disentangle_message(
-                state.conversations, classified_message, rule_based_classifier
-            )
+            # Emit the message to the state update queue instead of modifying state directly
+            await state_update_queue.put(classified_message)
 
-            logger.info(
-                f"Received new message: '{classified_message.message}'"
-                f" with confidence {classified_message.classification.score}"
+
+async def state_manager(state: AppState, state_update_queue: asyncio.Queue):
+    while True:
+        message = await state_update_queue.get()
+        try:
+            state.conversations = disentangle_message(
+                state.conversations,
+                message,
+                rule_based_classifier
             )
-        
-        current_active = len(state.conversations)
-        active_conversations_metric.n = current_active  # Set exact count
-        active_conversations_metric.refresh()  
+            state_update_queue.task_done()
+        except Exception as e:
+            logger.error(f"State update failed: {e}")
+            state_update_queue.task_done()
 
 
 async def archive_completed_conversations(
     conversation_archival_queue: asyncio.Queue, state: AppState
 ):
-    updated_conversations = update_completed_conversation(
-            conversations=state.conversations,
+    updated_convs = update_completed_conversation(
+            state.conversations,
             seconds_lapsed=20,
             current_time=datetime.now(timezone.utc),
         )
-    for conv in updated_conversations:
+
+    for conv in updated_convs:
         if conv.completed:
             await conversation_archival_queue.put(conv)
 
-    state.conversations = [conv for conv in updated_conversations if not conv.completed]
-    asyncio.sleep(10)
+    return state
 
 
-async def listen(url, valid_message_queue: asyncio.Queue, messages_received):
+async def start_ingestion(message_data, valid_message_queue: asyncio.Queue, messages_received):
+    try:
+        message = Message.model_validate_json(message_data)
+        await valid_message_queue.put(message)
+        messages_received.update(1)  # Increment on each received message
+    except ValidationError:
+        # fail silently for now
+        # this message should be sent to another queue for debugging
+        pass
+
+
+async def listen(url, ingestion_callback):
     async with websockets.connect(url) as websocket:
         while True:
             message_data = await websocket.recv()
-            message = Message.model_validate_json(message_data)
-            await valid_message_queue.put(message)
-            messages_received.update(1)  # Increment on each received message
+            asyncio.create_task(ingestion_callback(message_data))
 
 
 async def main():
@@ -127,17 +142,25 @@ async def main():
     valid_message_queue = asyncio.Queue()
     classified_message_queue = asyncio.Queue()
     conversation_archival_queue = asyncio.Queue()
+    state_update_queue = asyncio.Queue()  # Added
+
+    ingest = partial(
+        start_ingestion,
+        valid_message_queue=valid_message_queue,
+        messages_received=metrics['messages_received'])
 
     tasks = [
-        listen(os.getenv("WS_SOCK"), valid_message_queue, metrics['messages_received']),
+        listen(os.getenv("WS_SOCK"), ingest),
         classify_message(valid_message_queue, classified_message_queue, metrics['processed_messages']),
-        match_conversation(classified_message_queue, state, metrics['active_conversations']),
+        # redo from here, this needs to be cleaned up
+        match_conversation(classified_message_queue, state_update_queue),  # Updated
         archive_completed_conversations(conversation_archival_queue, state),
-        store_probable_calendar_conversations(conversation_archival_queue)
+        store_probable_calendar_conversations(conversation_archival_queue),
+        state_manager(state, state_update_queue)  # Added
     ]
     try:
         await asyncio.gather(*tasks, return_exceptions=True)
-    except (KeyboardInterrupt, ConnectionClosedOK) as e:
+    except (KeyboardInterrupt, ConnectionClosedOK):
         logging.info("Initiating graceful shutdown...")
         current_tasks = asyncio.all_tasks()
         for task in current_tasks:
@@ -151,15 +174,16 @@ async def main():
         for queue in [
             valid_message_queue,
             classified_message_queue,
-            conversation_archival_queue
+            conversation_archival_queue,
+            state_update_queue  # Added
         ]:
             queue.put_nowait(None)  # Signal completion
         logging.info("All Queues cleared")
-        
+
         # Clean up tqdm metrics
         for progress_bar in metrics.values():
             progress_bar.close()
-        logging.info("Graceful shutdown completed.")        
+        logging.info("Graceful shutdown completed.")
 
 
 
