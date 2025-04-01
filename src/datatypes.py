@@ -19,10 +19,6 @@ class ClassifiedMessage(Message):
     classification: CalendarClassification
 
 
-class DetectedCalendarEvent(BaseModel):
-    lines: list[Message]
-
-
 class Conversation(BaseModel):
     lines: list[Message] = []
     users: set[str] = set()
