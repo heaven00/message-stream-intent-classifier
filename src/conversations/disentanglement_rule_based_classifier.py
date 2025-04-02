@@ -1,41 +1,29 @@
+import logging
+from pprint import pprint
 import re
 from typing import Callable
 
 from pydantic import BaseModel
 from datatypes import Conversation, ClassifiedMessage
-from transformers import AutoTokenizer, AutoModel
-import torch
+from sentence_transformers import SentenceTransformer, util
 import numpy as np
 
 
-model_name = "sentence-transformers/all-MiniLM-L6-v2"
-tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModel.from_pretrained(model_name)
+logger = logging.getLogger(__name__)
+
+model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+model = SentenceTransformer(model_name)
 
 
 def _generate_embedding(text: str) -> np.ndarray:
-    inputs = tokenizer(
-        text, return_tensors="pt", truncation=True, padding=True, max_length=512
-    )
-    with torch.no_grad():
-        outputs = model(**inputs)
-    # Use the [CLS] token's hidden state as the sentence embedding
-    cls_embedding = outputs.last_hidden_state[:, 0, :].squeeze().numpy()
-    return cls_embedding
-
-
-def _cosine_similarity(embedding1: np.ndarray, embedding2: np.ndarray) -> float:
-    dot_product = np.dot(embedding1, embedding2)
-    norm1 = np.linalg.norm(embedding1)
-    norm2 = np.linalg.norm(embedding2)
-    if norm1 == 0 or norm2 == 0:
-        return 0.0
-    return dot_product / (norm1 * norm2)
+    return model.encode(text)
 
 
 # Time-based Clustering
-def is_within_time_window(conversation: Conversation, message: ClassifiedMessage) -> float:
-    elapsed_seconds = (message.ts - conversation.last_updated).total_seconds()
+def is_within_time_window(
+    conversation: Conversation, message: ClassifiedMessage
+) -> float:
+    elapsed_seconds = (message.ts - conversation.lines[-1].ts).total_seconds()
     max_elapsed_time = 30.0
 
     if elapsed_seconds >= max_elapsed_time:
@@ -62,14 +50,18 @@ def has_matching_keywords(
 
 
 # User Interaction Patterns
-def is_reply_to_conversation(conversation: Conversation, message: ClassifiedMessage) -> float:
+def is_reply_to_conversation(
+    conversation: Conversation, message: ClassifiedMessage
+) -> float:
     # Check if the message mentions any user from the conversation
     pattern = re.compile(r"@(\w+)", re.IGNORECASE)
     mentioned_users = pattern.findall(message.message)
     return 1.0 if bool(set(mentioned_users) & conversation.users) else 0.0
 
 
-def user_is_part_of_conversation(conversation: Conversation, message: ClassifiedMessage) -> float:
+def user_is_part_of_conversation(
+    conversation: Conversation, message: ClassifiedMessage
+) -> float:
     return 1.0 if message.user in conversation.users else 0.0
 
 
@@ -78,22 +70,12 @@ def semantic_similarity_score(
     conversation: Conversation, message: ClassifiedMessage, similarity_threshold=0.5
 ) -> float:
     # Generate embeddings for the conversation and the new message
-    conversation_embeddings = [
-        _generate_embedding(msg.message) for msg in conversation.lines
-    ]
+    conversation_embeddings = _generate_embedding(
+        " ".join([msg.message for msg in conversation.lines])
+    )
     message_embedding = _generate_embedding(message.message)
 
-    # Calculate semantic similarity scores
-    similarity_scores = [
-        _cosine_similarity(conv_emb, message_embedding)
-        for conv_emb in conversation_embeddings
-    ]
-
-    return (
-        max(similarity_scores)
-        if max(similarity_scores) >= similarity_threshold
-        else 0.0
-    )
+    return util.cos_sim(conversation_embeddings, message_embedding)[0][0]
 
 
 class Rule(BaseModel):
@@ -107,12 +89,12 @@ def execute_rules(
 ) -> dict[str, float]:
     """
     Apply a list of rules to a message and return a mapping of rule names to their weighted scores.
-    
+
     Args:
         conversation (Conversation): The conversation context.
         message (Message): The new message to classify.
         rules (List[Rule]): A list of Rule instances.
-    
+
     Returns:
         Dict[str, float]: A dictionary mapping rule names to their weighted scores.
     """
@@ -125,18 +107,31 @@ def execute_rules(
     return scores
 
 
-def rule_based_classifier(conversation: Conversation, message: ClassifiedMessage) -> bool:
+def rule_based_classifier(
+    conversation: Conversation, message: ClassifiedMessage
+) -> bool:
     rule_book: list[Rule] = [
         Rule(name="is_within_time_window", function=is_within_time_window, weight=1.0),
         Rule(name="reply_detection", function=is_reply_to_conversation, weight=1.0),
-        Rule(name="user_in_conversation", function=user_is_part_of_conversation, weight=1.0),
-        Rule(name="semantic_similarity", function=semantic_similarity_score, weight=.7),
+        Rule(
+            name="user_in_conversation",
+            function=user_is_part_of_conversation,
+            weight=1.0,
+        ),
+        Rule(
+            name="semantic_similarity", function=semantic_similarity_score, weight=0.7
+        ),
+        Rule(
+            name="seq_id_diff", function=lambda conv, msg: (conv.lines[-1].seqid - msg.seqid) < 10,
+            weight=1.0
+        )
     ]
-    
-    scores = execute_rules(conversation, message, rule_book)
 
-    return any([
-        scores['reply_detection'] == 1.0,
-        scores['semantic_similarity'] > 0.8,
-        (scores["user_in_conversation"] + scores['is_within_time_window']) > 1.6
-    ])
+    scores = execute_rules(conversation, message, rule_book)
+    return any(
+        [
+            scores["reply_detection"] == 1.0,
+            (scores["semantic_similarity"] > 0.8) and (scores["seq_id_diff"] == 1.0),
+            (scores["user_in_conversation"] + scores["is_within_time_window"]) > 1.6,
+        ]
+    )

@@ -68,7 +68,36 @@ base_time = datetime(2025, 2, 28, 12, 0, 0)
             "message": "Anyone up for lunch after work?"
         },
         False
-    )
+    ),
+    # add from live run
+    (
+        {
+            "lines": [
+                {      
+                    "seqid": 93720,
+                    "ts": "2024-01-01T02:36:11.891062Z",
+                    "user": "intelikey",
+                    "message": "Works for me. Skype or Discord?"
+                },
+                {
+                    "seqid": 93723,
+                    "ts": "2024-01-01T02:36:12.191062Z",
+                    "user": "Spiffyman",
+                    "message": "intelikey: Sounds like fun. I may be joining you in that before long. When I get home from holiday break, I'll have to set up an old Apple LaserWriter."
+                },
+            ],
+            "users": {"intelikey", "Spiffyman"},
+            "last_updated": "2024-01-01T02:36:12.191062Z",
+            "completed": False
+        },
+        {
+            "seqid": 93909,
+            "ts": "2024-01-01T02:36:30.791044Z",
+            "user": "fdoving",
+            "message": "you can make a uppercase command in bash too, if you want to."
+        },
+        False
+    ),
 ])
 def test_rule_based_classifier(conversation_data, message_data, expected):
     # Instantiate our Pydantic models from the provided dictionaries.
