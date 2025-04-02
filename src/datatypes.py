@@ -4,6 +4,7 @@ from datetime import datetime
 
 
 class CalendarClassification(BaseModel):
+    # label 1 = is calendar event
     label: Literal["LABEL_0", "LABEL_1"]
     score: float
 
