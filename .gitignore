@@ -23,3 +23,4 @@ model/
 .env
 .aider*
 .approval_tests_temp
+pytestdebug.log
