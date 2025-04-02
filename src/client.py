@@ -28,24 +28,22 @@ def process_message(state: AppState, message: Message) -> AppState:
     classified_message = is_calendar_event(message)
     logger.debug(f"Classified message: {classified_message}")
     
-    # Disentangle first (regardless of confidence), then check confidence later
-    state.calender_conversations = disentangle_message(
-        state.calender_conversations, 
-        classified_message, 
-        rule_based_classifier
-    )
-        
     confident_it_is_a_calendar_event = (
         classified_message.classification.label == "LABEL_1"
         and classified_message.classification.score > 0.8
     )
     
     if confident_it_is_a_calendar_event:
+        state.calender_conversations = disentangle_message(
+            state.calender_conversations, 
+            classified_message, 
+            rule_based_classifier
+        )
+        
         logger.info(
             f"Received new message: '{classified_message.message}'"
             f" with confidence {classified_message.classification.score}"
         )
-        
     return state
 
 

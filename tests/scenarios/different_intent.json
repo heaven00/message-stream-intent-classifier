@@ -36,20 +36,6 @@
             "users": ["anon"],
             "completed": false,
             "last_updated": 1741459420
-        },
-        {
-            "lines": [
-                {
-                    "message": "What's the weather forecast?",
-                    "ts": 1741459500,
-                    "seqid": 3,
-                    "user": "anon",
-                    "classification": {"label": "LABEL_1", "score": 0.9}
-                }
-            ],
-            "users": ["anon"],
-            "completed": false,
-            "last_updated": 1741459500
         }
     ]
 }
