@@ -1,5 +1,3 @@
-import logging
-from pprint import pprint
 import re
 from typing import Callable
 
@@ -9,14 +7,12 @@ from sentence_transformers import SentenceTransformer, util
 import numpy as np
 
 
-logger = logging.getLogger(__name__)
-
 model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
 model = SentenceTransformer(model_name)
 
 
 def _generate_embedding(text: str) -> np.ndarray:
-    return model.encode(text)
+    return model.encode(text, show_progress_bar=False)
 
 
 # Time-based Clustering
@@ -122,7 +118,7 @@ def rule_based_classifier(
             name="semantic_similarity", function=semantic_similarity_score, weight=0.7
         ),
         Rule(
-            name="seq_id_diff", function=lambda conv, msg: (conv.lines[-1].seqid - msg.seqid) < 10,
+            name="seq_id_diff", function=lambda conv, msg: (conv.lines[-1].seqid - msg.seqid) < 50,
             weight=1.0
         )
     ]
@@ -131,7 +127,7 @@ def rule_based_classifier(
     return any(
         [
             scores["reply_detection"] == 1.0,
-            (scores["semantic_similarity"] > 0.8) and (scores["seq_id_diff"] == 1.0),
-            (scores["user_in_conversation"] + scores["is_within_time_window"]) > 1.6,
+            (scores["semantic_similarity"] > 0.6) and (scores["is_within_time_window"] < 30),
+            scores["user_in_conversation"]  and (scores["is_within_time_window"] < 5)
         ]
     )
