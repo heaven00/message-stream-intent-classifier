@@ -1,8 +1,10 @@
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch, MagicMock
+from uuid import UUID, uuid4
 import pytest
 import websockets
 from async_client import (
+    conversation_manager,
     listen,
     start_ingestion,
     classify_message,
@@ -10,7 +12,8 @@ from async_client import (
     disentangle_message,
     store_probable_calendar_conversations,
 )
-from datatypes import CalendarClassification, ClassifiedMessage, Conversation, Message
+from conversations.ops import add_message_to_conversation
+from datatypes import AddToConversationEvent, CalendarClassification, ClassifiedMessage, Conversation, CreateConversationEvent, Message
 
 
 def valid_message() -> str:
@@ -191,3 +194,207 @@ async def test_store_probable_calendar_conversations():
         mock_file.__aenter__.return_value.flush.assert_awaited()
 
     assert conversational_archival_queue.qsize() == 0
+
+
+
+@pytest.mark.asyncio
+async def test_disentangle_message_no_previous_messages():
+    classified_queue = asyncio.Queue()
+    state_update_queue = asyncio.Queue()
+
+    message_data = {
+        "seqid": 1,
+        "ts": 1741874411,
+        "user": "user1",
+        "message": "hi",
+        "classification": CalendarClassification(label="LABEL_0", score=0.5)
+    }
+    classified_message = ClassifiedMessage.model_validate(message_data)
+
+    await classified_queue.put(classified_message)
+
+    task = asyncio.create_task(disentangle_message(classified_queue, state_update_queue))
+
+    # Allow some time for processing
+    await asyncio.sleep(0.1)
+
+    assert classified_queue.qsize() == 0
+
+    event = state_update_queue.get_nowait()
+    assert isinstance(event, CreateConversationEvent)
+    assert event.message == classified_message
+
+    task.cancel()
+
+
+
+@pytest.mark.asyncio
+async def test_disentangle_message_with_previous_messages_is_continuation():
+    classified_queue = asyncio.Queue()
+    state_update_queue = asyncio.Queue()
+
+    message_data_1 = {
+        "seqid": 1,
+        "ts": 1741874411,
+        "user": "user1",
+        "message": "hi",
+        "classification": CalendarClassification(label="LABEL_0", score=0.5)
+    }
+    classified_message_1 = ClassifiedMessage.model_validate(message_data_1)
+
+    message_data_2 = {
+        "seqid": 2,
+        "ts": 1741874412,
+        "user": "user1",
+        "message": "hello again",
+        "classification": CalendarClassification(label="LABEL_0", score=0.5)
+    }
+    classified_message_2 = ClassifiedMessage.model_validate(message_data_2)
+    task = asyncio.create_task(disentangle_message(classified_queue, state_update_queue))
+
+    await classified_queue.put(classified_message_1)
+    await asyncio.sleep(0.1)  # Give some time for the first message to be processed
+
+    with patch("async_client._is_continuation", return_value=0):
+        await classified_queue.put(classified_message_2)
+
+        
+        await asyncio.sleep(0.1)
+
+    assert classified_queue.qsize() == 0
+
+    event = state_update_queue.get_nowait()
+    assert isinstance(event, CreateConversationEvent)
+    assert event.message == classified_message_1
+
+    event = state_update_queue.get_nowait()
+    assert isinstance(event, AddToConversationEvent)
+    assert event.message == classified_message_2
+    assert event.previous_message == classified_message_1
+
+    task.cancel()
+
+
+@pytest.mark.asyncio
+async def test_disentangle_message_with_previous_messages_not_continuation():
+    classified_queue = asyncio.Queue()
+    state_update_queue = asyncio.Queue()
+
+    message_data_1 = {
+        "seqid": 1,
+        "ts": 1741874411,
+        "user": "user1",
+        "message": "hi",
+        "classification": CalendarClassification(label="LABEL_0", score=0.5)
+    }
+    classified_message_1 = ClassifiedMessage.model_validate(message_data_1)
+
+    message_data_2 = {
+        "seqid": 2,
+        "ts": 1741874412,
+        "user": "user1",
+        "message": "hello again",
+        "classification": CalendarClassification(label="LABEL_0", score=0.5)
+    }
+    classified_message_2 = ClassifiedMessage.model_validate(message_data_2)
+    task = asyncio.create_task(disentangle_message(classified_queue, state_update_queue))
+
+    await classified_queue.put(classified_message_1)
+    await asyncio.sleep(0.1)  # Give some time for the first message to be processed
+
+    with patch("async_client._is_continuation", return_value=-1):
+        await classified_queue.put(classified_message_2)
+
+        # Allow some time for processing
+        await asyncio.sleep(0.1)
+
+    assert classified_queue.qsize() == 0
+
+    event = state_update_queue.get_nowait()
+    assert isinstance(event, CreateConversationEvent)
+    assert event.message == classified_message_1
+
+    event = state_update_queue.get_nowait()
+    assert isinstance(event, CreateConversationEvent)
+    assert event.message == classified_message_2
+
+    task.cancel()
+
+
+
+@pytest.mark.asyncio
+async def test_conversation_manager_create_event_updates_conversations_and_conv_seq_id_map():
+    # Create a queue
+    state_update_queue = asyncio.Queue()
+    conversations, conv_seq_id_map = {}, {}
+
+
+    task = asyncio.create_task(conversation_manager(state_update_queue, conversations, conv_seq_id_map))
+
+    # Create a classified message for creating a new conversation
+    create_message = ClassifiedMessage(
+        seqid=1,
+        ts=1741874411,
+        user="user1",
+        message="This is a test message.",
+        classification=CalendarClassification(label="LABEL_0", score=0.9)
+    )
+    
+    # Create a create conversation event and put it in the queue
+    create_event = CreateConversationEvent(
+        message=create_message
+    )
+    await state_update_queue.put(create_event)
+
+    # Wait for the manager to process the event
+    await asyncio.sleep(0.1)  # Give some time for the task to run
+
+    # Check if conversations and conv_seq_id_map were updated correctly
+    assert len(conversations) == 1
+    conversation_uuid = list(conversations.keys())[0]
+    assert isinstance(conversation_uuid, str)
+    assert conv_seq_id_map == {1: conversation_uuid}
+
+    task.cancel()
+
+
+@pytest.mark.asyncio
+async def test_conversation_manager_add_event_updates_conversations_and_conv_seq_id_map():
+    # Create a queue
+    state_update_queue = asyncio.Queue()
+
+    # Create a classified message for creating a new conversation
+    message = ClassifiedMessage(
+        seqid=2,
+        ts=1741874411,
+        user="user1",
+        message="This is a test message.",
+        classification=CalendarClassification(label="LABEL_0", score=0.9)
+    )
+
+    previous_message = ClassifiedMessage(
+        seqid=1,
+        ts=1741874411,
+        user="user5",
+        message="This is a test message.",
+        classification=CalendarClassification(label="LABEL_0", score=0.9)
+    )
+    conv_id = str(uuid4()) 
+    conversations = {conv_id: add_message_to_conversation(Conversation(), previous_message)}
+    conv_seq_id_map = {1: conv_id}
+
+    task = asyncio.create_task(conversation_manager(state_update_queue, conversations, conv_seq_id_map))
+
+    
+    add_event = AddToConversationEvent(
+        message=message,
+        previous_message=previous_message
+    )
+    await state_update_queue.put(add_event)
+
+    # Wait for the manager to process the event
+    await asyncio.sleep(0.1)  # Give some time for the task to run
+
+    assert len(conversations) == 1
+    assert len(conversations[conv_id].lines) == 2
+    task.cancel()

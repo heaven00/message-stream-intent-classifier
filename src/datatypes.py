@@ -25,3 +25,12 @@ class Conversation(BaseModel):
     users: set[str] = set()
     last_updated: datetime | None = None
     completed: bool = False
+
+
+class CreateConversationEvent(BaseModel):
+    message: ClassifiedMessage
+
+
+class AddToConversationEvent(BaseModel):
+    message: ClassifiedMessage
+    previous_message: ClassifiedMessage
