@@ -7,6 +7,7 @@ from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError, Inv
 from calendar_event_classifier import is_calendar_event
 from conversations.ops import disentangle_message, update_completed_conversation
 from conversations.disentanglement_rule_based_classifier import rule_based_classifier
+from conversations.distentanglement_llm_based_classifier import llm_based_classifier
 from datatypes import Message, Conversation
 from dotenv import load_dotenv
 import aiofiles as aiof
@@ -37,7 +38,7 @@ def process_message(state: AppState, message: Message) -> AppState:
         state.calender_conversations = disentangle_message(
             state.calender_conversations, 
             classified_message, 
-            rule_based_classifier
+            llm_based_classifier
         )
         
         logger.info(
