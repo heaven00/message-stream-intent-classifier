@@ -7,7 +7,8 @@ from sentence_transformers import SentenceTransformer, util
 import numpy as np
 
 
-model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
+# convert to a class to load the model only when needed
+model_name = "sentence-transformers/all-mpnet-base-v2"
 model = SentenceTransformer(model_name)
 
 
