@@ -9,7 +9,7 @@ from async_client import (
     start_ingestion,
     classify_message,
     archive_completed_conversations,
-    disentangle_message,
+    classified_message_to_conversation,
     store_probable_calendar_conversations,
 )
 from conversations.ops import add_message_to_conversation
@@ -221,7 +221,7 @@ async def test_disentangle_message_no_previous_messages():
 
     await classified_queue.put(classified_message)
 
-    task = asyncio.create_task(disentangle_message(classified_queue, state_update_queue))
+    task = asyncio.create_task(classified_message_to_conversation(classified_queue, state_update_queue))
 
     # Allow some time for processing
     await asyncio.sleep(0.1)
@@ -258,7 +258,7 @@ async def test_disentangle_message_with_previous_messages_is_continuation():
         "classification": CalendarClassification(label="LABEL_0", score=0.5)
     }
     classified_message_2 = ClassifiedMessage.model_validate(message_data_2)
-    task = asyncio.create_task(disentangle_message(classified_queue, state_update_queue))
+    task = asyncio.create_task(classified_message_to_conversation(classified_queue, state_update_queue))
 
     await classified_queue.put(classified_message_1)
     await asyncio.sleep(0.1)  # Give some time for the first message to be processed
@@ -305,7 +305,7 @@ async def test_disentangle_message_with_previous_messages_not_continuation():
         "classification": CalendarClassification(label="LABEL_0", score=0.5)
     }
     classified_message_2 = ClassifiedMessage.model_validate(message_data_2)
-    task = asyncio.create_task(disentangle_message(classified_queue, state_update_queue))
+    task = asyncio.create_task(classified_message_to_conversation(classified_queue, state_update_queue))
 
     await classified_queue.put(classified_message_1)
     await asyncio.sleep(0.1)  # Give some time for the first message to be processed

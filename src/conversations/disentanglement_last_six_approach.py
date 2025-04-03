@@ -1,20 +1,21 @@
 import logging
-from ollama import chat
+from ollama import chat, AsyncClient
 from pydantic import BaseModel, Field
 
-from datatypes import ClassifiedMessage, Conversation, Message
+from datatypes import ClassifiedMessage
 
 logger = logging.getLogger(__name__)
 
+CLIENT = AsyncClient(host="http://127.0.0.1:11434")
 
 class Response(BaseModel):
     '''output describing whether the new message is continuation of any of the previous message'''
-    new_message: Message = Field(description="the new incoming message")
+    new_message: str = Field(description="the new incoming message")
     option: int = Field(description="Which of the option is this message a continuation, -1 if niether of them")
     reason: str = Field(description="reason for your choice")
 
 
-def __format_options(previous_messages):
+async def __format_options(previous_messages):
     option_str = ''
     for idx, msg in enumerate(previous_messages):
         option_str += f'Option {idx+1}: {msg.message}'
@@ -22,7 +23,7 @@ def __format_options(previous_messages):
     return option_str
 
 
-def classify_message(previous_messages: list[Message], msg: ClassifiedMessage, model: str) -> Response:
+async def classify_message(previous_messages: list[ClassifiedMessage], msg: ClassifiedMessage, model: str) -> Response:
     examples = """
 
     """
@@ -38,7 +39,7 @@ def classify_message(previous_messages: list[Message], msg: ClassifiedMessage, m
         {examples}
 
         Here are your options:
-        {__format_options(previous_messages)}
+        {await __format_options(previous_messages)}
 
         the new message:
         {msg.message}
@@ -46,7 +47,7 @@ def classify_message(previous_messages: list[Message], msg: ClassifiedMessage, m
         Provide your classification response with reasoning below,
         Response:
     """
-    response = chat(
+    response = await CLIENT.chat(
         messages = [
             {'role': 'user', 'content': prompt},
         ],
@@ -60,6 +61,6 @@ def classify_message(previous_messages: list[Message], msg: ClassifiedMessage, m
     return Response.model_validate_json(response.message.content or "")
 
 
-def llm_based_classifier(last_6_messages: list[ClassifiedMessage], message: ClassifiedMessage) -> int:
-    classification = classify_message(last_6_messages, message, 'qwq:32b')
+async def llm_based_classifier(last_6_messages: list[ClassifiedMessage], message: ClassifiedMessage) -> int:
+    classification = await classify_message(last_6_messages, message, 'qwq:32b')
     return classification.option
