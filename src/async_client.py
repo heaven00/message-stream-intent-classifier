@@ -22,7 +22,7 @@ from datatypes import (
     Conversation,
 )
 from dotenv import load_dotenv
-import aiofiles as aiof
+import aiofiles
 import logging
 import tqdm
 
@@ -37,10 +37,11 @@ class AppState(BaseModel):
 async def store_probable_calendar_conversations(
     conversational_archival_queue: asyncio.Queue,
 ):
-    conv = await conversational_archival_queue.get()
-    async with aiof.open(f"results/event_{conv.lines[0].seqid}_v1.json", "w") as out:
-        await out.write(conv.model_dump_json())
-        await out.flush()
+    while True:
+        conv = await conversational_archival_queue.get()
+        async with await aiofiles.open(f"results/event_{conv.lines[0].seqid}_v2.json", "w") as out:
+            await out.write(conv.model_dump_json())
+            await out.flush()
 
 
 async def classify_message(
@@ -90,8 +91,10 @@ async def disentangle_message(
 
 
 async def conversation_manager(
-    state_update_queue: asyncio.Queue, conversations: dict, conv_seq_id_map: dict
+    state_update_queue: asyncio.Queue, conversations: dict, conv_seq_id_map: dict, 
+    conversation_archival_queue: asyncio.Queue 
 ):
+    counter = 0
     while True:
         # maintain a list of conversations and trigger
         event = await state_update_queue.get()
@@ -111,7 +114,12 @@ async def conversation_manager(
             )
             conv_seq_id_map[event.message.seqid] = conv_uuid
         else:
-            raise Exception("Unknown message type")
+            raise Exception("Unknown message type") 
+        counter += 1
+        # every n messages trigger archive task
+        if counter == 10:
+            asyncio.create_task(archive_completed_conversations(conversations, conversation_archival_queue))
+
 
 
 async def archive_completed_conversations(
@@ -196,8 +204,7 @@ async def main():
         ),
         # redo from here, this needs to be cleaned up
         disentangle_message(classified_message_queue, state_update_queue),
-        conversation_manager(state_update_queue, conversations, conv_seq_id_map),
-        archive_completed_conversations(conversations, conversation_archival_queue),
+        conversation_manager(state_update_queue, conversations, conv_seq_id_map, conversation_archival_queue),
         store_probable_calendar_conversations(conversation_archival_queue),
     ]
     try:

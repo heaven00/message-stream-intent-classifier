@@ -180,19 +180,27 @@ async def test_store_probable_calendar_conversations():
 
     await conversational_archival_queue.put(conversation_to_archive)
 
-    mock_file = AsyncMock()
-    with patch("aiofiles.open", return_value=mock_file) as mock_open:
-        await store_probable_calendar_conversations(conversational_archival_queue)
+    with patch("async_client.aiofiles.open", AsyncMock()) as mock_open:
+        # Create an instance of AsyncMock to simulate the file object
+        mock_file = AsyncMock()
+        mock_open.return_value.__aenter__.return_value = mock_file
+        
+        task = asyncio.create_task(store_probable_calendar_conversations(conversational_archival_queue))
+        
+        # Wait for the queue to be processed
+        while not conversational_archival_queue.empty():
+            await asyncio.sleep(0.1)  # Small delay to allow processing
 
-        expected_filename = (
-            f"results/event_{conversation_to_archive.lines[0].seqid}_v1.json"
-        )
+        # Ensure that open was called with the correct filename
+        expected_filename = f"results/event_{conversation_to_archive.lines[0].seqid}_v2.json"
         mock_open.assert_called_once_with(expected_filename, "w")
+        
+        # Ensure that write and flush were called on the file object
+        expected_content = conversation_to_archive.model_dump_json()
+        mock_file.write.assert_called_once_with(expected_content)
+        mock_file.flush.assert_called_once()
 
-        # Verify write and flush were called on the file handle
-        mock_file.__aenter__.return_value.write.assert_awaited()
-        mock_file.__aenter__.return_value.flush.assert_awaited()
-
+        task.cancel()
     assert conversational_archival_queue.qsize() == 0
 
 
@@ -327,9 +335,9 @@ async def test_conversation_manager_create_event_updates_conversations_and_conv_
     # Create a queue
     state_update_queue = asyncio.Queue()
     conversations, conv_seq_id_map = {}, {}
+    archival_queue = asyncio.Queue()
 
-
-    task = asyncio.create_task(conversation_manager(state_update_queue, conversations, conv_seq_id_map))
+    task = asyncio.create_task(conversation_manager(state_update_queue, conversations, conv_seq_id_map, archival_queue))
 
     # Create a classified message for creating a new conversation
     create_message = ClassifiedMessage(
@@ -362,6 +370,7 @@ async def test_conversation_manager_create_event_updates_conversations_and_conv_
 async def test_conversation_manager_add_event_updates_conversations_and_conv_seq_id_map():
     # Create a queue
     state_update_queue = asyncio.Queue()
+    archival_queue = asyncio.Queue()
 
     # Create a classified message for creating a new conversation
     message = ClassifiedMessage(
@@ -383,8 +392,7 @@ async def test_conversation_manager_add_event_updates_conversations_and_conv_seq
     conversations = {conv_id: add_message_to_conversation(Conversation(), previous_message)}
     conv_seq_id_map = {1: conv_id}
 
-    task = asyncio.create_task(conversation_manager(state_update_queue, conversations, conv_seq_id_map))
-
+    task = asyncio.create_task(conversation_manager(state_update_queue, conversations, conv_seq_id_map, archival_queue))
     
     add_event = AddToConversationEvent(
         message=message,
