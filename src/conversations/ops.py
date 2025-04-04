@@ -13,14 +13,14 @@ def add_message_to_conversation(conversation: Conversation, message: ClassifiedM
     return conversation
 
 
-def update_completed_conversation(
+def update_suspended_conversation(
     conversations: list[Conversation], seconds_lapsed: int, current_time: datetime
 ) -> list[Conversation]:
     updated_conversations = []
     for conv in conversations:
         time_diff = (current_time - conv.last_updated)
         if  time_diff > timedelta(seconds=seconds_lapsed):
-            conv.completed = True
+            conv.suspended = True
         updated_conversations.append(conv)
     return updated_conversations
 
@@ -46,3 +46,14 @@ def disentangle_message(
             add_message_to_conversation(new_conv, message)
         )
     return updates
+
+
+def update_completed_conversation(
+    conversations: list[Conversation], current_time: datetime
+) -> list[Conversation]:
+    updated_conversations = []
+    for conv in conversations:
+        if  conv.event_datetime and (conv.event_datetime < current_time):
+            conv.completed = True
+        updated_conversations.append(conv)
+    return updated_conversations
