@@ -1,11 +1,8 @@
 from datetime import datetime
-import logging
 from ollama import chat
 from pydantic import BaseModel, Field
 
 from datatypes import ClassifiedMessage, Conversation, Message
-
-logger = logging.getLogger(__name__)
 
 
 class Response(BaseModel):
@@ -25,9 +22,6 @@ def __format_msg(msg: ClassifiedMessage):
 
 
 def extract_event(conversation: list[Message], model: str) -> Response:
-    examples = """
-    """
-
     prompt = f"""
         Assume you are data annotator, and you are tasked with extracting date time for events in conversations, below you will be provided with conversation
 
