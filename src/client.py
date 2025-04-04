@@ -6,7 +6,7 @@ import websockets
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError, InvalidURI
 from calendar_event_classifier import is_calendar_event
 from conversations.ops import disentangle_message, update_completed_conversation, update_suspended_conversation
-from conversations.disentanglement.ule_based_classifier import rule_based_classifier
+from conversations.disentanglement.rule_based_classifier import rule_based_classifier
 from conversations.disentanglement.llm_based_classifier import llm_based_classifier
 from conversations.extract_date_time_llm_model import model as event_datetime_extractor
 from datatypes import Message, Conversation
