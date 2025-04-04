@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 import os
 from uuid import uuid4
-from pydantic import BaseModel, ValidationError
+from pydantic import ValidationError
 import websockets
 from functools import partial
 from websockets.exceptions import ConnectionClosedOK
@@ -23,15 +23,9 @@ from datatypes import (
 from dotenv import load_dotenv
 import aiofiles
 import logging
-import tqdm
 
 
 logger = logging.getLogger(__name__)
-
-
-class AppState(BaseModel):
-    conversations: list[Conversation] = []
-
 
 async def store_probable_calendar_conversations(
     conversational_archival_queue: asyncio.Queue,
@@ -167,11 +161,14 @@ async def monitor_queue_sizes(queues: list[str, asyncio.Queue]):
 
 
 async def listen(url, ingestion_callback):
-    async with websockets.connect(url) as websocket:
-        while True:
-            message_data = await websocket.recv()
-            # should there be no await here?
-            asyncio.create_task(ingestion_callback(message_data))
+    try:
+        async with websockets.connect(url) as websocket:
+            while True:
+                message_data = await websocket.recv()
+                # should there be no await here?
+                asyncio.create_task(ingestion_callback(message_data))
+    except ConnectionClosedOK:
+        pass
 
 
 async def main():
@@ -217,7 +214,7 @@ async def main():
             group.create_task(store_probable_calendar_conversations(conversation_archival_queue))
             group.create_task(monitor_queue_sizes(queues_named_list))
 
-    except* (KeyboardInterrupt, ConnectionClosedOK, asyncio.CancelledError):
+    except* (KeyboardInterrupt, asyncio.CancelledError):
         logging.info("Initiating graceful shutdown...")
         current_tasks = asyncio.all_tasks()
         for task in current_tasks:
@@ -232,7 +229,7 @@ async def main():
             state_update_queue
         ]:
             queue.put_nowait(None)  # Signal completion
-        logging.info("All Queues cleared")
+        logging.info("Sent close signal to all Queues")
         
         # Wait for tasks to complete/cancel
         await asyncio.gather(*current_tasks, return_exceptions=True)

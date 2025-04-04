@@ -62,5 +62,5 @@ async def classify_message(previous_messages: list[ClassifiedMessage], msg: Clas
 
 
 async def llm_based_classifier(last_6_messages: list[ClassifiedMessage], message: ClassifiedMessage) -> int:
-    classification = await classify_message(last_6_messages, message, 'qwq:32b')
+    classification = await classify_message(last_6_messages, message, 'deepseek-r1:8b')
     return classification.option
