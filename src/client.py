@@ -35,11 +35,19 @@ def process_message(state: AppState, message: Message) -> AppState:
     )
     
     if confident_it_is_a_calendar_event:
-        state.calender_conversations = disentangle_message(
-            state.calender_conversations, 
-            classified_message, 
-            rule_based_classifier
-        )
+        # TODO: add ollama docker and compose these two together
+        try:
+            state.calender_conversations = disentangle_message(
+                state.calender_conversations, 
+                classified_message, 
+                llm_based_classifier
+            )
+        except ConnectionError:
+            state.calender_conversations = disentangle_message(
+                state.calender_conversations, 
+                classified_message, 
+                rule_based_classifier
+            )
         
         logger.info(
             f"Received new message: '{classified_message.message}'"
