@@ -12,10 +12,6 @@ model_name = "sentence-transformers/all-mpnet-base-v2"
 model = SentenceTransformer(model_name)
 
 
-def _generate_embedding(text: str) -> np.ndarray:
-    return model.encode(text, show_progress_bar=False)
-
-
 # Time-based Clustering
 def is_within_time_window(
     conversation: Conversation, message: ClassifiedMessage
@@ -66,13 +62,16 @@ def user_is_part_of_conversation(
 def semantic_similarity_score(
     conversation: Conversation, message: ClassifiedMessage, similarity_threshold=0.5
 ) -> float:
+    def _generate_embedding(text: list[str]) -> np.ndarray:
+        return model.encode(text, show_progress_bar=False, normalize_embeddings=True)
+
     # Generate embeddings for the conversation and the new message
     conversation_embeddings = _generate_embedding(
-        " ".join([msg.message for msg in conversation.lines])
+        "\n".join([msg.message for msg in conversation.lines])
     )
     message_embedding = _generate_embedding(message.message)
 
-    return util.cos_sim(conversation_embeddings, message_embedding)[0][0]
+    return util.dot_score(conversation_embeddings, message_embedding)[0][0]
 
 
 class Rule(BaseModel):
@@ -117,10 +116,6 @@ def rule_based_classifier(
         ),
         Rule(
             name="semantic_similarity", function=semantic_similarity_score, weight=0.7
-        ),
-        Rule(
-            name="seq_id_diff", function=lambda conv, msg: (conv.lines[-1].seqid - msg.seqid) < 50,
-            weight=1.0
         )
     ]
 

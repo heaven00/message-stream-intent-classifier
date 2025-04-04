@@ -7,12 +7,11 @@ import websockets
 from functools import partial
 from websockets.exceptions import ConnectionClosedOK
 from calendar_event_classifier import is_calendar_event
-from conversations.disentanglement_last_six_approach import llm_based_classifier
+from conversations.disentanglement.last_six_approach import llm_based_classifier
 from conversations.ops import (
     add_message_to_conversation,
     update_completed_conversation,
 )
-from conversations.disentanglement_rule_based_classifier import rule_based_classifier
 from datatypes import (
     AddToConversationEvent,
     ClassifiedMessage,

@@ -6,8 +6,8 @@ import websockets
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError, InvalidURI
 from calendar_event_classifier import is_calendar_event
 from conversations.ops import disentangle_message, update_completed_conversation
-from conversations.disentanglement_rule_based_classifier import rule_based_classifier
-from conversations.disentanglement_llm_based_classifier import llm_based_classifier
+from conversations.disentanglement.ule_based_classifier import rule_based_classifier
+from conversations.disentanglement.llm_based_classifier import llm_based_classifier
 from datatypes import Message, Conversation
 from dotenv import load_dotenv
 import aiofiles as aiof
@@ -38,7 +38,7 @@ def process_message(state: AppState, message: Message) -> AppState:
         state.calender_conversations = disentangle_message(
             state.calender_conversations, 
             classified_message, 
-            llm_based_classifier
+            rule_based_classifier
         )
         
         logger.info(
@@ -77,19 +77,22 @@ async def listen(url):
                         logger.debug(f"Stored conversation: {conv.lines[0].message}")
                         state.calender_conversations.remove(conv)
     
-    except ConnectionClosedOK:
+    except (ConnectionClosedOK):
         logger.info("Completed processing messages in WebSocket")
         logger.debug("Writing out any pending conversations")
-        
-        for conv in state.calender_conversations:
-            await store_probable_calendar_conversations(conv)
+        await(write_out_partial_conversations(state))
 
     except ConnectionClosedError as e:
         logger.error(f"Connection closed unexpectedly: {e}", exc_info=True)
+        await(write_out_partial_conversations(state))
     
     except InvalidURI:
         logger.error(f"Invalid WebSocket URI: {url}")
 
+
+async def write_out_partial_conversations(state: AppState):
+    for conv in state.calender_conversations:
+        await store_probable_calendar_conversations(conv)
 
 def main():
     load_dotenv()
