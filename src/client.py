@@ -5,13 +5,15 @@ from pydantic import BaseModel
 import websockets
 from websockets.exceptions import ConnectionClosedOK, ConnectionClosedError, InvalidURI
 from calendar_event_classifier import is_calendar_event
-from conversations.ops import disentangle_message, update_completed_conversation
+from conversations.ops import disentangle_message, update_completed_conversation, update_suspended_conversation
 from conversations.disentanglement.ule_based_classifier import rule_based_classifier
 from conversations.disentanglement.llm_based_classifier import llm_based_classifier
+from conversations.extract_date_time_llm_model import model as event_datetime_extractor
 from datatypes import Message, Conversation
 from dotenv import load_dotenv
 import aiofiles as aiof
 import logging
+
 
 logger = logging.getLogger(__name__)
 
@@ -56,19 +58,41 @@ def process_message(state: AppState, message: Message) -> AppState:
     return state
 
 
-def handle_completed_conversations(state: AppState):
-    state.calender_conversations = update_completed_conversation(
+def mark_suspended_conversations(state: AppState):
+    state.calender_conversations = update_suspended_conversation(
         conversations=state.calender_conversations,
         seconds_lapsed=30,
         current_time=datetime.now(timezone.utc),
     )
-
     return state
 
 
+def mark_completed_conversations(state: AppState):
+    state.calender_conversations = update_completed_conversation(
+        conversations=state.calender_conversations,
+        current_time=datetime.now(timezone.utc)
+    )
+    return state
+
+
+def extract_calendar_datetime_from_conversations(state: AppState): 
+    updated_conversations = []
+    for conversation in state.calender_conversations:
+        if conversation.suspended:
+            conversation.event_datetime = event_datetime_extractor(conversation)
+        updated_conversations.append(conversation)
+    state.calender_conversations = updated_conversations
+    return state
+
+
+async def write_completed_conversations(conversations: list[Conversation]):
+    for conv in list(conversations):
+        if conv.completed:
+            await store_probable_calendar_conversations(conv)
+            logger.debug(f"Stored conversation: {conv.lines[0].message}")
+
 async def listen(url):
     state = AppState()
-    
     try:
         async with websockets.connect(url) as websocket:
             while True:
@@ -77,14 +101,13 @@ async def listen(url):
                 )
                 
                 state = process_message(state, message)
-                state = handle_completed_conversations(state)
+                state = mark_suspended_conversations(state)
+                state = extract_calendar_datetime_from_conversations(state)
+                state = mark_completed_conversations(state)
+
                 logger.debug(f"Updated State: {state}")
-                for conv in list(state.calender_conversations):
-                    if conv.completed:
-                        await store_probable_calendar_conversations(conv)
-                        logger.debug(f"Stored conversation: {conv.lines[0].message}")
-                        state.calender_conversations.remove(conv)
-    
+                await write_completed_conversations(state.calender_conversations)
+
     except (ConnectionClosedOK):
         logger.info("Completed processing messages in WebSocket")
         logger.debug("Writing out any pending conversations")
