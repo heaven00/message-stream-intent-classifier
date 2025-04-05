@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta, timezone
-from conversations.disentanglement_rule_based_classifier import (
+from conversations.disentanglement.rule_based_classifier import (
     has_matching_keywords,
     is_reply_to_conversation,
     is_within_time_window,
@@ -132,7 +132,7 @@ def test_failing_is_time_within_scenario():
         ],
         users={"CoJaBo-Aztec", "genii", "_Whipper"},
         last_updated=datetime(2025, 4, 2, 12, 39, 44, 182970, tzinfo=UTC),
-        completed=False,
+        suspended=False,
     )
     message = ClassifiedMessage(
         seqid=99966,

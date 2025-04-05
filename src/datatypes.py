@@ -24,7 +24,9 @@ class Conversation(BaseModel):
     lines: list[Message] = []
     users: set[str] = set()
     last_updated: datetime | None = None
+    suspended: bool = False
     completed: bool = False
+    event_datetime: datetime | None = None
 
 
 class CreateConversationEvent(BaseModel):
