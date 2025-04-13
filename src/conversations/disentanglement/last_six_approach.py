@@ -4,8 +4,6 @@ from pydantic import BaseModel, Field
 
 from datatypes import ClassifiedMessage
 
-logger = logging.getLogger(__name__)
-
 CLIENT = AsyncClient(host="http://127.0.0.1:11434")
 
 class Response(BaseModel):
@@ -56,7 +54,8 @@ async def classify_message(previous_messages: list[ClassifiedMessage], msg: Clas
         options={
             'temperature': 0,
             'num_ctx': 8192
-        }
+        },
+        keep_alive=True
     )
     return Response.model_validate_json(response.message.content or "")
 
