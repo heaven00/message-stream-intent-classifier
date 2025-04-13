@@ -1,59 +1,84 @@
-import pytest
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
-import json
-import os
-from client import AppState, process_message
-from datatypes import Message
-from scenario import Scenario
+from client import AppState, extract_calendar_datetime_from_conversations, mark_completed_conversations, mark_suspended_conversations
+from datatypes import CalendarClassification, ClassifiedMessage, Conversation
 
 
-def load_scenarios(scenario_dir: str) -> list[tuple[str, Scenario]]:
-    scenarios = []
-    for filename in os.listdir(scenario_dir):
-        if filename.endswith('.json'):
-            with open(os.path.join(scenario_dir, filename), 'r') as file:
-                data = json.load(file)
-                scenario = Scenario(**data)
-                scenarios.append((filename, scenario))
-    return scenarios
-
-
-@pytest.mark.parametrize("scenario_name, scenario", load_scenarios('tests/scenarios'))
-def test_process_message(scenario_name: str, scenario: Scenario):
-    state = AppState(calender_conversations=scenario.initial_state)
-    
-    # Extract message details
-    classified_message = scenario.new_message
-    message_data = classified_message.model_dump(exclude="classification")
-    message = Message(**message_data)
-    
-    with patch("client.is_calendar_event") as mock_is_cal:
-        mock_is_cal.return_value = classified_message 
-        updated_state = process_message(state, message)
-        
-    # Enhanced comparison with scenario context
-    try:
-        _compare_conversations(
-            convs=updated_state.calender_conversations,
-            expected=scenario.expected_state,
-            excluded=["last_updated"],
-            scenario_name=scenario_name
-        )
-    except AssertionError as e:
-        pytest.fail(f"Scenario '{scenario_name}' failed: {str(e)}")
-
-
-def _compare_conversations(convs, expected, excluded, scenario_name):
-    assert len(convs) == len(expected), (
-        f"{scenario_name}: Expected {len(expected)} conversations but got {len(convs)}"
+def create_classified_message(ts: datetime) -> ClassifiedMessage:
+    return ClassifiedMessage(
+        seqid=1,
+        ts=ts,
+        user="user1",
+        message="test message",
+        classification=CalendarClassification(label="LABEL_1", score=0.9)
     )
+
+
+def create_conversation(messages: list[ClassifiedMessage], suspended=False, completed=False) -> Conversation:
+    return Conversation(
+        lines=messages,
+        users={msg.user for msg in messages},
+        last_updated=max(msg.ts for msg in messages) if messages else None,
+        suspended=suspended,
+        completed=completed
+    )
+
+
+def test_mark_suspended_conversations():
+    current_time = datetime.now(timezone.utc)
+    past_time = current_time - timedelta(seconds=40)  # older than 30 seconds
+
+    msg_past = create_classified_message("LABEL_1", past_time)
+    msg_now = create_classified_message("LABEL_1", current_time)
+
+    conv_old = create_conversation([msg_past], suspended=False, completed=False)
+    conv_new = create_conversation([msg_now], suspended=False, completed=False)
+
+    state = AppState(calender_conversations=[conv_old, conv_new])
+
+    updated_state = mark_suspended_conversations(state)
     
-    for conv, exp in zip(convs, expected):
-        actual = conv.model_dump(exclude=excluded)
-        expected_data = exp.model_dump(exclude=excluded)
-        
-        assert actual == expected_data, (
-            f"{scenario_name}: Mismatch\n"
-            f"Actual: {actual}\nExpected: {expected_data}"
-        )
- 
+    assert len(updated_state.calender_conversations) == 2
+    assert updated_state.calender_conversations[0].suspended == True
+    assert updated_state.calender_conversations[1].suspended == False
+
+
+def test_mark_completed_conversations_with_old_event_dates():
+    current_time = datetime.now(timezone.utc)
+    past_time = current_time - timedelta(days=1)  # older than a day
+
+    msg_past = create_classified_message("LABEL_0", past_time)
+    msg_now = create_classified_message("LABEL_0", current_time)
+
+    conv_old = create_conversation([msg_past], suspended=True, completed=False)
+    conv_new = create_conversation([msg_now], suspended=True, completed=False)
+
+    state = AppState(calender_conversations=[conv_old, conv_new])
+
+    updated_state = mark_completed_conversations(state)
+    
+    assert len(updated_state.calender_conversations) == 2
+    assert updated_state.calender_conversations[0].completed == True
+    assert updated_state.calender_conversations[1].completed == False
+
+
+def mock_event_datetime_extractor(_conversation):
+    return datetime.now(timezone.utc)
+
+
+def test_extract_calendar_datetime_from_conversations_extracts_only_for_suspended_conversations(monkeypatch):
+    current_time = datetime.now(timezone.utc)
+    msg = create_classified_message("LABEL_1", current_time)
+
+    conv_suspended = create_conversation([msg], suspended=True, completed=False)
+    conv_not_suspended = create_conversation([msg], suspended=False, completed=False)
+
+    state = AppState(calender_conversations=[conv_suspended, conv_not_suspended])
+
+    monkeypatch.setattr('src.client.event_datetime_extractor', mock_event_datetime_extractor)
+
+    updated_state = extract_calendar_datetime_from_conversations(state)
+    
+    assert len(updated_state.calender_conversations) == 2
+    assert updated_state.calender_conversations[0].event_datetime is not None
+    assert updated_state.calender_conversations[1].event_datetime is None
