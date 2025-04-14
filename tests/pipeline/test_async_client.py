@@ -1,19 +1,28 @@
 import asyncio
-from unittest.mock import patch, MagicMock
-import aiofiles
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
+
+import aiofiles
 import pytest
 import websockets
+
+from conversations.ops import add_message_to_conversation
+from datatypes import (
+    AddToConversationEvent,
+    CalendarClassification,
+    ClassifiedMessage,
+    Conversation,
+    CreateConversationEvent,
+    Message,
+)
 from pipeline.async_client import (
+    classified_message_to_conversation,
+    classify_message,
     conversation_manager,
     listen,
     start_ingestion,
-    classify_message,
-    classified_message_to_conversation,
     store_probable_calendar_conversations,
 )
-from conversations.ops import add_message_to_conversation
-from datatypes import AddToConversationEvent, CalendarClassification, ClassifiedMessage, Conversation, CreateConversationEvent, Message
 
 
 def valid_message() -> str:
@@ -151,6 +160,7 @@ async def test_match_conversation_updates_active_conversations():
 
 @pytest.mark.asyncio
 async def test_store_probable_calendar_conversations():
+    # pyright: ignore
     aiofiles.threadpool.wrap.register(MagicMock)(
         lambda *args, **kwargs: aiofiles.threadpool.AsyncBufferedIOBase(*args, **kwargs)
     )
