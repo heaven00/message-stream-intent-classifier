@@ -25,22 +25,21 @@ dependencies = [
 dev = [
     "jupyter>=1.1.1",
     "matplotlib>=3.10.0",
+    "pre-commit>=4.2.0",
     "pytest>=8.3.5",
     "pytest-asyncio>=0.25.3",
 ]
 
 [tool.uv]
-package=true
+package = true
 
 [project.scripts]
 ingest = "client:main"
-ingest_async = "async_client:run"
+ingest_async = "pipeline.async_client:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = [
-  "src"
-]
+pythonpath = ["src"]
 testpaths = ["tests"]
