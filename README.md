@@ -4,9 +4,16 @@ A websocket client that processes messages from a socket and tries to dentable c
 
 # High level Information flow
 
+## Sync Flow [Deprecated in favour of Async client with last_six_message model for disentanglement]
 <img title="flow" alt="high level flow" src="./images/very-high-level-flow.png">
 
-# Running With Docker
+## Async Flow
+
+The Async flow uses qwq:32b llm running with ollama for the disentagling the stream of messages coming in before classification.
+
+<img title="async_flow" alt="high leve async flow" src="./images/event_based_architecture.png">
+
+# Running With Docker [Sync Flow Only]
 
 - setup `.env` file with `cp .env.example .env` and set the WS_SOCK variable, this is the websocket that gets ingested.
 - setup docker if you don't have it yet
