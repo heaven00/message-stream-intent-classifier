@@ -9,6 +9,7 @@ import numpy as np
 
 # convert to a class to load the model only when needed
 model_name = "sentence-transformers/all-mpnet-base-v2"
+# pyright: ignore
 model = SentenceTransformer(model_name)
 
 
@@ -67,11 +68,11 @@ def semantic_similarity_score(
 
     # Generate embeddings for the conversation and the new message
     conversation_embeddings = _generate_embedding(
-        "\n".join([msg.message for msg in conversation.lines])
+        [msg.message for msg in conversation.lines]
     )
-    message_embedding = _generate_embedding(message.message)
+    message_embedding = _generate_embedding([message.message])
 
-    return util.dot_score(conversation_embeddings, message_embedding)[0][0]
+    return float(util.dot_score(conversation_embeddings, message_embedding)[0][0])
 
 
 class Rule(BaseModel):
